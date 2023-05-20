@@ -1,14 +1,21 @@
-pub fn add(left: usize, right: usize) -> usize {
-    left + right
-}
+mod piece;
 
-#[cfg(test)]
-mod tests {
-    use super::*;
+// pub use crate::piece;
 
-    #[test]
-    fn it_works() {
-        let result = add(2, 2);
-        assert_eq!(result, 4);
-    }
-}
+// #[cfg(test)]
+// mod tests {
+//     use super::*;
+
+//     #[test]
+//     fn test_piece() {
+//         let piece_chars = "_KABNRCPkabnrcp";
+//         let mut result = String::new();
+
+//         for ch in piece_chars.chars() {
+//             let piece = piece::Piece::from(ch);
+//             result.push(piece.ch());
+//         }
+
+//         assert_eq!(result, piece_chars);
+//     }
+// }
