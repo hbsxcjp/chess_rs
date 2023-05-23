@@ -15,34 +15,28 @@ const LEGSTATECOUNT: usize = 1 << 4;
 const COLSTATECOUNT: usize = 1 << COLCOUNT;
 const ROWSTATECOUNT: usize = 1 << ROWCOUNT;
 
-type IndexSeatArray = [usize; SEATCOUNT];
-
-type CoordSeatArray = [Coord; SEATCOUNT];
-
+type IndexArray = [usize; SEATCOUNT];
+type CoordArray = [Coord; SEATCOUNT];
 type SideBoardArray = [u128; SIDECOUNT];
-
 type SeatBoardArray = [u128; SEATCOUNT];
-
 type LegStateSeatBoardArray = [[u128; SEATCOUNT]; LEGSTATECOUNT];
-
-type ColStateSeatBoardArray = [[u128; SEATCOUNT]; COLSTATECOUNT];
-
-type RowStateSeatBoardArray = [[u128; SEATCOUNT]; ROWSTATECOUNT];
-
+type RowStateBoardArray = [[u128; COLSTATECOUNT]; ROWCOUNT];
+type ColStateBoardArray = [[u128; ROWSTATECOUNT]; COLCOUNT];
 type SideSeatBoardArray = [[u128; SEATCOUNT]; SIDECOUNT];
 
-const COORDS: CoordSeatArray = create_coords();
+// mask
+const COORDS: CoordArray = create_coords();
 const MASK: SeatBoardArray = create_mask();
 const ROTATEMASK: SeatBoardArray = create_rotatemask();
 
-// 根据所处的位置选取可放置的位置[isBottom:0-1]
+// put 根据所处的位置选取可放置的位置[is_bottom:0-1]
 const KINGPUT: SideBoardArray = create_kingput();
 const ADVISORPUT: SideBoardArray = create_advisorput();
 const BISHOPPUT: SideBoardArray = create_bishopput();
 const KNIGHTROOKCANNONPUT: u128 = 0x3f_fff_fff_fff_fff_fff_fff_fffu128;
 const PAWNPUT: SideBoardArray = create_pawnput();
 
-// 帅仕根据所处的位置选取可移动位棋盘[index:0-89]
+// move 帅仕根据所处的位置选取可移动位棋盘[index:0-89]
 const KINGMOVE: SeatBoardArray = create_kingmove();
 const ADVISORMOVE: SeatBoardArray = create_advisormove();
 
@@ -51,17 +45,16 @@ const BISHOPMOVE: LegStateSeatBoardArray = create_bishopmove();
 const KNIGHTMOVE: LegStateSeatBoardArray = create_knightmove();
 
 // 车炮根据每行和每列的位置状态选取可移动位棋盘[state:0-0x1FF,0X3FF][index:0-89]
+const ROOKROWMOVE: RowStateBoardArray = create_rookcannon_rowmove(false);
+const ROOKCOLMOVE: ColStateBoardArray = create_rookcannon_colmove(false);
+const CANNONROWMOVE: RowStateBoardArray = create_rookcannon_rowmove(true);
+const CANNONCOLMOVE: ColStateBoardArray = create_rookcannon_colmove(true);
 
-// private static readonly List<BigInteger[]> RookRowMove = CreateRookCannonMove(PieceKind.Rook, false);
-// private static readonly List<BigInteger[]> RookColMove = CreateRookCannonMove(PieceKind.Rook, true);
-// private static readonly List<BigInteger[]> CannonRowMove = CreateRookCannonMove(PieceKind.Cannon, false);
-// private static readonly List<BigInteger[]> CannonColMove = CreateRookCannonMove(PieceKind.Cannon, true);
-
-// 兵根据本方处于上或下的二个位置状态选取可移动位棋盘[isBottom:0-1][index:0-89]
+// 兵根据本方处于上或下的二个位置状态选取可移动位棋盘[is_bottom:0-1][index:0-89]
 const PAWNMOVE: SideSeatBoardArray = create_pawnmove();
 
-const fn create_coords() -> CoordSeatArray {
-    let mut coords: CoordSeatArray = [Coord { row: 0, col: 0 }; SEATCOUNT];
+const fn create_coords() -> CoordArray {
+    let mut coords: CoordArray = [Coord { row: 0, col: 0 }; SEATCOUNT];
 
     let mut index = 0;
     while index < coords.len() {
@@ -209,8 +202,8 @@ const fn create_pawnput() -> SideBoardArray {
     array
 }
 
-const fn get_one_index_array(mut board: u128) -> (IndexSeatArray, usize) {
-    let mut index_array: IndexSeatArray = [0; SEATCOUNT];
+const fn get_one_index_array(mut board: u128) -> (IndexArray, usize) {
+    let mut index_array: IndexArray = [0; SEATCOUNT];
     let mut count: usize = 0;
     while board != 0 {
         let index = board.trailing_zeros() as usize;
@@ -233,7 +226,7 @@ const fn create_kingmove() -> SeatBoardArray {
         let row = coord.row;
         let col = coord.col;
 
-        array[valid_index] = if col > 3 { MASK[index - 1] } else { 0 }
+        array[index] = if col > 3 { MASK[index - 1] } else { 0 }
             | if col < 5 { MASK[index + 1] } else { 0 }
             | if row == 1 || row == 2 || row == 8 || row == 9 {
                 MASK[index - COLCOUNT]
@@ -262,7 +255,7 @@ const fn create_advisormove() -> SeatBoardArray {
         let row = coord.row;
         let col = coord.col;
 
-        array[valid_index] = if col == 4 {
+        array[index] = if col == 4 {
             MASK[index - COLCOUNT - 1]
                 | MASK[index - COLCOUNT + 1]
                 | MASK[index + COLCOUNT - 1]
@@ -306,7 +299,7 @@ const fn create_bishopmove() -> LegStateSeatBoardArray {
                     0
                 };
 
-            all_move[valid_index] = if 0 == (real_state & 0b1000) {
+            all_move[index] = if 0 == (real_state & 0b1000) {
                 MASK[index - 2 * COLCOUNT - 2]
             } else {
                 0
@@ -421,12 +414,114 @@ const fn create_knightmove() -> LegStateSeatBoardArray {
     array
 }
 
+//
+const fn get_match_value(state: usize, index: usize, is_cannon: bool, is_col: bool) -> u128 {
+    let mut match_value = 0;
+    let mut is_high = 0;
+    while is_high < 2 {
+        let direction: i32 = if is_high == 1 { 1 } else { -1 };
+        let end_index: i32 = if is_high == 1 {
+            (if is_col { ROWCOUNT } else { COLCOUNT }) as i32 - 1
+        } else {
+            0
+        }; // 每行列数或每列行数
+
+        let mut skip = false; // 炮是否已跳
+        let mut idx = direction * (index as i32 + direction);
+        while idx <= end_index {
+            let index = direction * idx;
+            let has_piece = (state & 1 << index) != 0;
+            if is_cannon {
+                if !skip {
+                    if has_piece {
+                        skip = true;
+                    } else {
+                        match_value |= 1 << index;
+                    }
+                } else if has_piece {
+                    match_value |= 1 << index;
+                    break;
+                }
+            } else {
+                match_value |= 1 << index;
+                if has_piece
+                // 遇到棋子
+                {
+                    break;
+                }
+            }
+
+            idx += 1;
+        }
+
+        is_high += 1;
+    }
+
+    return match_value;
+}
+
+const fn create_rookcannon_rowmove(is_cannon: bool) -> RowStateBoardArray {
+    let mut array: RowStateBoardArray = [[0; COLSTATECOUNT]; ROWCOUNT];
+    let mut index = 0;
+    while index < ROWCOUNT {
+        let mut state_move = [0u128; COLSTATECOUNT];
+        let mut state = 0;
+        while state < COLSTATECOUNT {
+            // 本状态当前行或列位置有棋子
+            if 0 != (state & 1 << index) {
+                state_move[state] = get_match_value(state, index, is_cannon, false);
+            }
+
+            state += 1;
+        }
+
+        array[index] = state_move;
+        index += 1;
+    }
+
+    array
+}
+
+const fn create_rookcannon_colmove(is_cannon: bool) -> ColStateBoardArray {
+    let mut array: ColStateBoardArray = [[0; ROWSTATECOUNT]; COLCOUNT];
+    let mut index = 0;
+    while index < COLCOUNT {
+        let mut state_move = [0u128; ROWSTATECOUNT];
+        let mut state = 0;
+        while state < ROWSTATECOUNT {
+            // 本状态当前行或列位置有棋子
+            if 0 != (state & 1 << index) {
+                let match_value = get_match_value(state, index, is_cannon, true);
+                let mut col_match_value = 0u128;
+                let mut row = 0;
+                while row < ROWCOUNT {
+                    if 0 != (match_value & 1 << row) {
+                        // 每行的首列置位
+                        col_match_value |= MASK[row * COLCOUNT];
+                    }
+
+                    row += 1;
+                }
+
+                state_move[state] = col_match_value;
+            }
+
+            state += 1;
+        }
+
+        array[index] = state_move;
+        index += 1;
+    }
+
+    array
+}
+
 const fn create_pawnmove() -> SideSeatBoardArray {
     let mut array: SideSeatBoardArray = [[0; SEATCOUNT]; SIDECOUNT];
     let mut side = 0;
     while side < SIDECOUNT {
         let mut all_move = [0u128; SEATCOUNT];
-        let (index_array, count) = get_one_index_array(PAWNPUT[0] | PAWNPUT[1]);
+        let (index_array, count) = get_one_index_array(PAWNPUT[side]);
         let mut valid_index: usize = 0;
         while valid_index < count {
             let index = index_array[valid_index];
@@ -434,7 +529,7 @@ const fn create_pawnmove() -> SideSeatBoardArray {
             let row = coord.row;
             let col = coord.col;
 
-            all_move[valid_index] = if (side == 0 && row > 4) || (side == 1 && row < 5) {
+            all_move[index] = if (side == 0 && row > 4) || (side == 1 && row < 5) {
                 (if col != 0 { MASK[index - 1] } else { 0 })
                     | if col != (COLCOUNT - 1) {
                         MASK[index + 1]
@@ -461,86 +556,139 @@ const fn create_pawnmove() -> SideSeatBoardArray {
     array
 }
 
-pub fn get_board_string(board: u128, is_rotate: bool) -> Vec<String> {
-    fn get_rowcol_string(board: u128, col_num: usize) -> String {
+pub fn get_bishop_move(from_index: usize, all_pieces: u128) -> u128 {
+    let coord = COORDS[from_index];
+    let row = coord.row;
+    let col = coord.col;
+    let is_top = row == 0 || row == 5;
+    let is_bottom = row == 4 || row == ROWCOUNT - 1;
+    let is_left = col == 0;
+    let is_right = col == COLCOUNT - 1;
+    let state =
+        (if is_top || is_left || (all_pieces & MASK[from_index - COLCOUNT - 1]) != 0 {
+            0b1000
+        } else {
+            0
+        }) | (if is_top || is_right || (all_pieces & MASK[from_index - COLCOUNT + 1]) != 0 {
+            0b0100
+        } else {
+            0
+        }) | (if is_bottom || is_left || (all_pieces & MASK[from_index + COLCOUNT - 1]) != 0 {
+            0b0010
+        } else {
+            0
+        }) | (if is_bottom || is_right || (all_pieces & MASK[from_index + COLCOUNT + 1]) != 0 {
+            0b0001
+        } else {
+            0
+        });
+
+    return BISHOPMOVE[state][from_index];
+}
+
+pub fn get_knight_move(from_index: usize, all_pieces: u128) -> u128 {
+    let coord = COORDS[from_index];
+    let row = coord.row;
+    let col = coord.col;
+    let state = (if row == 0 || (all_pieces & MASK[from_index - COLCOUNT]) != 0 {
+        0b1000
+    } else {
+        0
+    }) | (if col == 0 || (all_pieces & MASK[from_index - 1]) != 0 {
+        0b0100
+    } else {
+        0
+    }) | (if col == COLCOUNT - 1 || (all_pieces & MASK[from_index + 1]) != 0 {
+        0b0010
+    } else {
+        0
+    }) | (if row == ROWCOUNT - 1 || (all_pieces & MASK[from_index + COLCOUNT]) != 0 {
+        0b0001
+    } else {
+        0
+    });
+
+    return KNIGHTMOVE[state][from_index];
+}
+
+pub fn get_rookcannon_move(
+    is_cannon: bool,
+    from_index: usize,
+    all_pieces: u128,
+    rotate_pieces: u128,
+) -> u128 {
+    let coord = COORDS[from_index];
+    let row = coord.row;
+    let col = coord.col;
+    let row_offset = row * COLCOUNT;
+    let row_move = if is_cannon {
+        CANNONROWMOVE
+    } else {
+        ROOKROWMOVE
+    };
+    let col_move = if is_cannon {
+        CANNONCOLMOVE
+    } else {
+        ROOKCOLMOVE
+    };
+
+    // 每行首列置位全体移动数列
+    return (row_move[col][((all_pieces >> row_offset) & 0x1FF) as usize] << row_offset)
+        | col_move[row][((rotate_pieces >> col * ROWCOUNT) & 0x3FF) as usize] << col;
+}
+
+pub fn get_board_string(board: u128) -> Vec<String> {
+    fn get_rowcol_string(board: u128) -> String {
         let mut result = String::new();
-        for col in 0..col_num {
+        for col in 0..COLCOUNT {
             result += if (board & (1 << col)) == 0 { "-" } else { "1" };
         }
-        result += " ";
 
-        return result;
+        return result + " ";
     }
 
-    let row_num = if is_rotate { COLCOUNT } else { ROWCOUNT };
-    let col_num = if is_rotate { ROWCOUNT } else { COLCOUNT };
-    let mode = if is_rotate { 0x3FF } else { 0x1FF };
     let mut result: Vec<String> = vec![];
-    for row in 0..row_num {
-        let offset = row * col_num;
-        result.push(get_rowcol_string(
-            (board & (mode << offset)) >> offset,
-            col_num,
-        ));
+    for row in 0..ROWCOUNT {
+        let offset = row * COLCOUNT;
+        result.push(get_rowcol_string((board & (0x1FF << offset)) >> offset));
     }
 
     return result;
 }
 
-pub fn get_board_array_string(
-    boards: &[u128],
-    colnum_perrow: usize,
-    show_zero: bool,
-    is_rotate: bool,
-) -> String {
-    // 处理非零情况
-    let mut nonzero_boards: Vec<u128> = vec![];
-    if !show_zero {
-        for index in 0..boards.len() {
-            if boards[index] != 0 {
-                nonzero_boards.push(boards[index]);
-            }
-        }
-    } else {
-        nonzero_boards = boards.to_vec();
-    }
-
+pub fn write_board_array_string(name: &str, boards: &[u128]) {
     // 设置每行列数,标题行
-    let length = nonzero_boards.len();
-    let row_num = if is_rotate { COLCOUNT } else { ROWCOUNT };
-    let colnum_perrow = if length < colnum_perrow {
-        length
-    } else {
-        colnum_perrow
-    };
+    let length = boards.len();
 
     let mut title_line = String::from("   ");
-    for _ in 0..colnum_perrow {
-        title_line += if is_rotate {
-            "ABCDEFGHIJ "
-        } else {
-            "ABCDEFGHI "
-        };
+    let col_per_row = if length < COLCOUNT { length } else { COLCOUNT };
+    for _ in 0..col_per_row {
+        title_line += "ABCDEFGHI ";
     }
     title_line += "\n";
 
-    let mut result = String::new();
+    let mut result = format!("{name}: {length}\n");
+    let mut non_zero_count = 0;
     let mut index = 0;
     while index < length {
-        let mut result_perrow: Vec<Vec<String>> = vec![];
+        let mut result_group: Vec<Vec<String>> = vec![];
         let mut col = 0;
-        while col < colnum_perrow && index + col < length {
-            result_perrow.push(get_board_string(boards[index + col], is_rotate));
+        while col < COLCOUNT && index + col < length {
+            let board = boards[index + col];
+            if board != 0 {
+                non_zero_count += 1;
+            }
+            result_group.push(get_board_string(board));
             col += 1;
         }
 
         let mut row_result = title_line.clone();
-        for row in 0..row_num {
+        for row in 0..ROWCOUNT {
             let row_str = format!("{row}: ");
             row_result += &row_str;
             let mut col = 0;
-            while col < colnum_perrow && index + col < length {
-                row_result += &result_perrow[col][row];
+            while col < COLCOUNT && index + col < length {
+                row_result += &result_group[col][row];
                 col += 1;
             }
 
@@ -549,98 +697,60 @@ pub fn get_board_array_string(
 
         result += &row_result;
 
-        index += colnum_perrow;
+        index += COLCOUNT;
     }
-    let length_str = format!("length: {length}\n");
+
+    let length_str = format!("length: {length}\nnon_zero: {non_zero_count}\n");
     result += &length_str;
 
-    return result;
+    std::fs::write(format!("tests/{name}.txt"), result).expect("Write Err.");
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::fs;
 
     #[test]
-    fn test_mask() {
-        let len = MASK.len();
-        let board_str = get_board_array_string(&MASK, COLCOUNT, true, false);
-        let result = format!("MASK: {len}\n{board_str}\n");
+    fn test_constant_value() {
+        // mask
+        write_board_array_string("MASK", &MASK);
+        write_board_array_string("ROTATEMASK", &ROTATEMASK);
 
-        fs::write("tests/test_mask.txt", result).expect("Write Err.");
-    }
-
-    #[test]
-    fn test_rotatemask() {
-        let len = ROTATEMASK.len();
-        let board_str = get_board_array_string(&ROTATEMASK, ROWCOUNT, true, true);
-        let result = format!("ROTATEMASK: {len}\n{board_str}\n");
-
-        fs::write("tests/test_rotatemask.txt", result).expect("Write Err.");
-    }
-
-    #[test]
-    fn test_kingput() {
-        let len = KINGPUT.len();
-        let board_str = get_board_array_string(&KINGPUT, COLCOUNT, true, false);
-        let result = format!("KINGPUT: {len}\n{board_str}\n");
-
-        fs::write("tests/test_kingput.txt", result).expect("Write Err.");
-    }
-
-    #[test]
-    fn test_advisorput() {
-        let len = ADVISORPUT.len();
-        let board_str = get_board_array_string(&ADVISORPUT, COLCOUNT, true, false);
-        let result = format!("ADVISORPUT: {len}\n{board_str}\n");
-
-        fs::write("tests/test_advisorput.txt", result).expect("Write Err.");
-    }
-
-    #[test]
-    fn test_bishopput() {
-        let len = BISHOPPUT.len();
-        let board_str = get_board_array_string(&BISHOPPUT, COLCOUNT, true, false);
-        let result = format!("BISHOPPUT: {len}\n{board_str}\n");
-
-        fs::write("tests/test_bishopput.txt", result).expect("Write Err.");
-    }
-
-    #[test]
-    fn test_knightrookcannonput() {
+        // put
+        write_board_array_string("KINGPUT", &KINGPUT);
+        write_board_array_string("ADVISORPUT", &ADVISORPUT);
+        write_board_array_string("BISHOPPUT", &BISHOPPUT);
         let boards: Vec<u128> = vec![KNIGHTROOKCANNONPUT];
-        let len = boards.len();
-        let board_str = get_board_array_string(&boards, COLCOUNT, true, false);
-        let result = format!("KNIGHTROOKCANNONPUT: {len}\n{board_str}\n");
+        write_board_array_string("KNIGHTROOKCANNONPUT", &boards);
+        write_board_array_string("PAWNPUT", &PAWNPUT);
 
-        fs::write("tests/test_knightrookcannonput.txt", result).expect("Write Err.");
-    }
+        // move
+        write_board_array_string("KINGMOVE", &KINGMOVE);
+        write_board_array_string("ADVISORMOVE", &ADVISORMOVE);
+        for index in 0..LEGSTATECOUNT {
+            let name = format!("BISHOPMOVE[{index}]");
+            write_board_array_string(&name, &BISHOPMOVE[index]);
 
-    #[test]
-    fn test_pawnput() {
-        let len = PAWNPUT.len();
-        let board_str = get_board_array_string(&PAWNPUT, COLCOUNT, true, false);
-        let result = format!("PAWNPUT: {len}\n{board_str}\n");
+            let name = format!("KNIGHTMOVE[{index}]");
+            write_board_array_string(&name, &KNIGHTMOVE[index]);
+        }
+        for index in 0..ROWCOUNT {
+            let name = format!("ROOKROWMOVE[{index}]");
+            write_board_array_string(&name, &ROOKROWMOVE[index]);
 
-        fs::write("tests/test_pawnput.txt", result).expect("Write Err.");
-    }
+            let name = format!("CANNONROWMOVE[{index}]");
+            write_board_array_string(&name, &CANNONROWMOVE[index]);
+        }
+        for index in 0..COLCOUNT {
+            let name = format!("ROOKCOLMOVE[{index}]");
+            write_board_array_string(&name, &ROOKCOLMOVE[index]);
 
-    #[test]
-    fn test_kingmove() {
-        let len = KINGMOVE.len();
-        let board_str = get_board_array_string(&KINGMOVE, COLCOUNT, false, false);
-        let result = format!("KINGMOVE: {len}\n{board_str}\n");
-
-        fs::write("tests/test_kingmove.txt", result).expect("Write Err.");
-    }
-
-    #[test]
-    fn test_advisormove() {
-        let len = ADVISORMOVE.len();
-        let board_str = get_board_array_string(&ADVISORMOVE, 5, false, false);
-        let result = format!("ADVISORMOVE: {len}\n{board_str}\n");
-
-        fs::write("tests/test_advisormove.txt", result).expect("Write Err.");
+            let name = format!("CANNONCOLMOVE[{index}]");
+            write_board_array_string(&name, &CANNONCOLMOVE[index]);
+        }
+        for index in 0..SIDECOUNT {
+            let name = format!("PAWNMOVE[{index}]");
+            write_board_array_string(&name, &PAWNMOVE[index]);
+        }
     }
 }
