@@ -1,57 +1,91 @@
 #![allow(dead_code)]
 
+use rand::Rng;
+
 #[derive(Clone, Copy)]
 pub struct Coord {
     row: usize,
     col: usize,
 }
 
-const ROWCOUNT: usize = 10;
-const COLCOUNT: usize = 9;
-const SEATCOUNT: usize = ROWCOUNT * COLCOUNT;
+pub const COLORCOUNT: usize = 2;
+pub const KINDCOUNT: usize = 7;
 
-const SIDECOUNT: usize = 2;
-const LEGSTATECOUNT: usize = 1 << 4;
-const COLSTATECOUNT: usize = 1 << COLCOUNT;
-const ROWSTATECOUNT: usize = 1 << ROWCOUNT;
+pub const ROWCOUNT: usize = 10;
+pub const COLCOUNT: usize = 9;
+pub const SEATCOUNT: usize = ROWCOUNT * COLCOUNT;
 
-type IndexArray = [usize; SEATCOUNT];
-type CoordArray = [Coord; SEATCOUNT];
-type SideBoardArray = [u128; SIDECOUNT];
-type SeatBoardArray = [u128; SEATCOUNT];
-type LegStateSeatBoardArray = [[u128; SEATCOUNT]; LEGSTATECOUNT];
-type RowStateBoardArray = [[u128; COLSTATECOUNT]; ROWCOUNT];
-type ColStateBoardArray = [[u128; ROWSTATECOUNT]; COLCOUNT];
-type SideSeatBoardArray = [[u128; SEATCOUNT]; SIDECOUNT];
+pub const SIDECOUNT: usize = 2;
+pub const LEGSTATECOUNT: usize = 1 << 4;
+pub const COLSTATECOUNT: usize = 1 << ROWCOUNT;
+pub const ROWSTATECOUNT: usize = 1 << COLCOUNT;
+
+pub type ZobristArray = [[[u64; SEATCOUNT]; KINDCOUNT]; COLORCOUNT];
+
+pub type BitBoard = u128;
+pub type IndexArray = [usize; SEATCOUNT];
+pub type CoordArray = [Coord; SEATCOUNT];
+pub type SideBoardArray = [BitBoard; SIDECOUNT];
+pub type SeatBoardArray = [BitBoard; SEATCOUNT];
+pub type LegStateSeatBoardArray = [[BitBoard; SEATCOUNT]; LEGSTATECOUNT];
+pub type RowColStateBoardArray = [[BitBoard; COLSTATECOUNT]; ROWCOUNT];
+pub type ColRowStateBoardArray = [[BitBoard; ROWSTATECOUNT]; COLCOUNT];
+pub type SideSeatBoardArray = [[BitBoard; SEATCOUNT]; SIDECOUNT];
+
+// zobrist
+// static ZOBRISTKEY: ZobristArray = [[[0; SEATCOUNT]; KINDCOUNT]; COLORCOUNT];
+// static ZOBRISTLOCK: ZobristArray = [[[0; SEATCOUNT]; KINDCOUNT]; COLORCOUNT];
+// static COLORZOBRISTKEY: &[u64] = &ZOBRISTKEY[0][0][0..2];
+// static COLORZOBRISTLOCK: &[u64] = &ZOBRISTLOCK[0][0][0..2];
+// static COLLIDEZOBRISTKEY: &[u64] = &ZOBRISTKEY[1][0][0..3];
 
 // mask
-const COORDS: CoordArray = create_coords();
-const MASK: SeatBoardArray = create_mask();
-const ROTATEMASK: SeatBoardArray = create_rotatemask();
+pub const COORDS: CoordArray = create_coords();
+pub const MASK: SeatBoardArray = create_mask();
+pub const ROTATEMASK: SeatBoardArray = create_rotatemask();
 
 // put 根据所处的位置选取可放置的位置[is_bottom:0-1]
-const KINGPUT: SideBoardArray = create_kingput();
-const ADVISORPUT: SideBoardArray = create_advisorput();
-const BISHOPPUT: SideBoardArray = create_bishopput();
-const KNIGHTROOKCANNONPUT: u128 = 0x3f_fff_fff_fff_fff_fff_fff_fffu128;
-const PAWNPUT: SideBoardArray = create_pawnput();
+pub const KINGPUT: SideBoardArray = create_kingput();
+pub const ADVISORPUT: SideBoardArray = create_advisorput();
+pub const BISHOPPUT: SideBoardArray = create_bishopput();
+pub const KNIGHTROOKCANNONPUT: BitBoard = 0x3f_fff_fff_fff_fff_fff_fff_fffu128;
+pub const PAWNPUT: SideBoardArray = create_pawnput();
 
 // move 帅仕根据所处的位置选取可移动位棋盘[index:0-89]
-const KINGMOVE: SeatBoardArray = create_kingmove();
-const ADVISORMOVE: SeatBoardArray = create_advisormove();
+pub const KINGMOVE: SeatBoardArray = create_kingmove();
+pub const ADVISORMOVE: SeatBoardArray = create_advisormove();
 
 // 马相根据憋马腿或田心组成的四个位置状态选取可移动位棋盘[state:0-0XF][index:0-89]
-const BISHOPMOVE: LegStateSeatBoardArray = create_bishopmove();
-const KNIGHTMOVE: LegStateSeatBoardArray = create_knightmove();
+pub const BISHOPMOVE: LegStateSeatBoardArray = create_bishopmove();
+pub const KNIGHTMOVE: LegStateSeatBoardArray = create_knightmove();
 
 // 车炮根据每行和每列的位置状态选取可移动位棋盘[state:0-0x1FF,0X3FF][index:0-89]
-const ROOKROWMOVE: RowStateBoardArray = create_rookcannon_rowmove(false);
-const ROOKCOLMOVE: ColStateBoardArray = create_rookcannon_colmove(false);
-const CANNONROWMOVE: RowStateBoardArray = create_rookcannon_rowmove(true);
-const CANNONCOLMOVE: ColStateBoardArray = create_rookcannon_colmove(true);
+pub const ROOKROWMOVE: ColRowStateBoardArray = create_rookcannon_row_move(false);
+pub const ROOKCOLMOVE: RowColStateBoardArray = create_rookcannon_col_move(false);
+pub const CANNONROWMOVE: ColRowStateBoardArray = create_rookcannon_row_move(true);
+pub const CANNONCOLMOVE: RowColStateBoardArray = create_rookcannon_col_move(true);
 
 // 兵根据本方处于上或下的二个位置状态选取可移动位棋盘[is_bottom:0-1][index:0-89]
-const PAWNMOVE: SideSeatBoardArray = create_pawnmove();
+pub const PAWNMOVE: SideSeatBoardArray = create_pawnmove();
+
+pub fn create_zobrist() -> ZobristArray {
+    let mut zobrist: ZobristArray = [[[0; SEATCOUNT]; KINDCOUNT]; COLORCOUNT];
+    for color in 0..COLORCOUNT {
+        let mut color_zobrist = [[0; SEATCOUNT]; KINDCOUNT];
+        for kind in 0..KINDCOUNT {
+            let mut kind_zobrist = [0; SEATCOUNT];
+            for index in 0..SEATCOUNT {
+                kind_zobrist[index] = rand::thread_rng().gen_range(u64::MIN..=u64::MAX);
+            }
+
+            color_zobrist[kind] = kind_zobrist;
+        }
+
+        zobrist[color] = color_zobrist;
+    }
+
+    return zobrist;
+}
 
 const fn create_coords() -> CoordArray {
     let mut coords: CoordArray = [Coord { row: 0, col: 0 }; SEATCOUNT];
@@ -202,7 +236,7 @@ const fn create_pawnput() -> SideBoardArray {
     array
 }
 
-const fn get_one_index_array(mut board: u128) -> (IndexArray, usize) {
+const fn get_one_index_array(mut board: BitBoard) -> (IndexArray, usize) {
     let mut index_array: IndexArray = [0; SEATCOUNT];
     let mut count: usize = 0;
     while board != 0 {
@@ -415,7 +449,7 @@ const fn create_knightmove() -> LegStateSeatBoardArray {
 }
 
 //
-const fn get_match_value(state: usize, index: usize, is_cannon: bool, is_col: bool) -> u128 {
+const fn get_match_value(state: usize, index: usize, is_cannon: bool, is_col: bool) -> BitBoard {
     let mut match_value = 0;
     let mut is_high = 0;
     while is_high < 2 {
@@ -460,35 +494,13 @@ const fn get_match_value(state: usize, index: usize, is_cannon: bool, is_col: bo
     return match_value;
 }
 
-const fn create_rookcannon_rowmove(is_cannon: bool) -> RowStateBoardArray {
-    let mut array: RowStateBoardArray = [[0; COLSTATECOUNT]; ROWCOUNT];
+const fn create_rookcannon_col_move(is_cannon: bool) -> RowColStateBoardArray {
+    let mut array: RowColStateBoardArray = [[0; COLSTATECOUNT]; ROWCOUNT];
     let mut index = 0;
     while index < ROWCOUNT {
         let mut state_move = [0u128; COLSTATECOUNT];
         let mut state = 0;
         while state < COLSTATECOUNT {
-            // 本状态当前行或列位置有棋子
-            if 0 != (state & 1 << index) {
-                state_move[state] = get_match_value(state, index, is_cannon, false);
-            }
-
-            state += 1;
-        }
-
-        array[index] = state_move;
-        index += 1;
-    }
-
-    array
-}
-
-const fn create_rookcannon_colmove(is_cannon: bool) -> ColStateBoardArray {
-    let mut array: ColStateBoardArray = [[0; ROWSTATECOUNT]; COLCOUNT];
-    let mut index = 0;
-    while index < COLCOUNT {
-        let mut state_move = [0u128; ROWSTATECOUNT];
-        let mut state = 0;
-        while state < ROWSTATECOUNT {
             // 本状态当前行或列位置有棋子
             if 0 != (state & 1 << index) {
                 let match_value = get_match_value(state, index, is_cannon, true);
@@ -504,6 +516,28 @@ const fn create_rookcannon_colmove(is_cannon: bool) -> ColStateBoardArray {
                 }
 
                 state_move[state] = col_match_value;
+            }
+
+            state += 1;
+        }
+
+        array[index] = state_move;
+        index += 1;
+    }
+
+    array
+}
+
+const fn create_rookcannon_row_move(is_cannon: bool) -> ColRowStateBoardArray {
+    let mut array: ColRowStateBoardArray = [[0; ROWSTATECOUNT]; COLCOUNT];
+    let mut index = 0;
+    while index < COLCOUNT {
+        let mut state_move = [0u128; ROWSTATECOUNT];
+        let mut state = 0;
+        while state < ROWSTATECOUNT {
+            // 本状态当前行或列位置有棋子
+            if 0 != (state & 1 << index) {
+                state_move[state] = get_match_value(state, index, is_cannon, false);
             }
 
             state += 1;
@@ -556,89 +590,88 @@ const fn create_pawnmove() -> SideSeatBoardArray {
     array
 }
 
-pub fn get_bishop_move(from_index: usize, all_pieces: u128) -> u128 {
-    let coord = COORDS[from_index];
+pub fn get_bishop_move(index: usize, all_pieces: BitBoard) -> BitBoard {
+    let coord = COORDS[index];
     let row = coord.row;
     let col = coord.col;
     let is_top = row == 0 || row == 5;
     let is_bottom = row == 4 || row == ROWCOUNT - 1;
     let is_left = col == 0;
     let is_right = col == COLCOUNT - 1;
-    let state =
-        (if is_top || is_left || (all_pieces & MASK[from_index - COLCOUNT - 1]) != 0 {
-            0b1000
-        } else {
-            0
-        }) | (if is_top || is_right || (all_pieces & MASK[from_index - COLCOUNT + 1]) != 0 {
-            0b0100
-        } else {
-            0
-        }) | (if is_bottom || is_left || (all_pieces & MASK[from_index + COLCOUNT - 1]) != 0 {
-            0b0010
-        } else {
-            0
-        }) | (if is_bottom || is_right || (all_pieces & MASK[from_index + COLCOUNT + 1]) != 0 {
-            0b0001
-        } else {
-            0
-        });
-
-    return BISHOPMOVE[state][from_index];
-}
-
-pub fn get_knight_move(from_index: usize, all_pieces: u128) -> u128 {
-    let coord = COORDS[from_index];
-    let row = coord.row;
-    let col = coord.col;
-    let state = (if row == 0 || (all_pieces & MASK[from_index - COLCOUNT]) != 0 {
+    let state = (if is_top || is_left || (all_pieces & MASK[index - COLCOUNT - 1]) != 0 {
         0b1000
     } else {
         0
-    }) | (if col == 0 || (all_pieces & MASK[from_index - 1]) != 0 {
+    }) | (if is_top || is_right || (all_pieces & MASK[index - COLCOUNT + 1]) != 0 {
         0b0100
     } else {
         0
-    }) | (if col == COLCOUNT - 1 || (all_pieces & MASK[from_index + 1]) != 0 {
+    }) | (if is_bottom || is_left || (all_pieces & MASK[index + COLCOUNT - 1]) != 0 {
         0b0010
     } else {
         0
-    }) | (if row == ROWCOUNT - 1 || (all_pieces & MASK[from_index + COLCOUNT]) != 0 {
+    }) | (if is_bottom || is_right || (all_pieces & MASK[index + COLCOUNT + 1]) != 0 {
         0b0001
     } else {
         0
     });
 
-    return KNIGHTMOVE[state][from_index];
+    return BISHOPMOVE[state][index];
+}
+
+pub fn get_knight_move(index: usize, all_pieces: BitBoard) -> BitBoard {
+    let coord = COORDS[index];
+    let row = coord.row;
+    let col = coord.col;
+    let state = (if row == 0 || (all_pieces & MASK[index - COLCOUNT]) != 0 {
+        0b1000
+    } else {
+        0
+    }) | (if col == 0 || (all_pieces & MASK[index - 1]) != 0 {
+        0b0100
+    } else {
+        0
+    }) | (if col == COLCOUNT - 1 || (all_pieces & MASK[index + 1]) != 0 {
+        0b0010
+    } else {
+        0
+    }) | (if row == ROWCOUNT - 1 || (all_pieces & MASK[index + COLCOUNT]) != 0 {
+        0b0001
+    } else {
+        0
+    });
+
+    return KNIGHTMOVE[state][index];
 }
 
 pub fn get_rookcannon_move(
     is_cannon: bool,
-    from_index: usize,
-    all_pieces: u128,
-    rotate_pieces: u128,
-) -> u128 {
-    let coord = COORDS[from_index];
+    index: usize,
+    all_pieces: BitBoard,
+    rotate_pieces: BitBoard,
+) -> BitBoard {
+    let coord = COORDS[index];
     let row = coord.row;
     let col = coord.col;
     let row_offset = row * COLCOUNT;
     let row_move = if is_cannon {
-        CANNONROWMOVE
-    } else {
-        ROOKROWMOVE
-    };
-    let col_move = if is_cannon {
         CANNONCOLMOVE
     } else {
         ROOKCOLMOVE
     };
+    let col_move = if is_cannon {
+        CANNONROWMOVE
+    } else {
+        ROOKROWMOVE
+    };
 
     // 每行首列置位全体移动数列
     return (row_move[col][((all_pieces >> row_offset) & 0x1FF) as usize] << row_offset)
-        | col_move[row][((rotate_pieces >> col * ROWCOUNT) & 0x3FF) as usize] << col;
+        | (col_move[row][((rotate_pieces >> col * ROWCOUNT) & 0x3FF) as usize] << col);
 }
 
-pub fn get_board_string(board: u128) -> Vec<String> {
-    fn get_rowcol_string(board: u128) -> String {
+pub fn get_board_string(board: BitBoard) -> Vec<String> {
+    fn get_rowcol_string(board: BitBoard) -> String {
         let mut result = String::new();
         for col in 0..COLCOUNT {
             result += if (board & (1 << col)) == 0 { "-" } else { "1" };
@@ -656,7 +689,7 @@ pub fn get_board_string(board: u128) -> Vec<String> {
     return result;
 }
 
-pub fn write_board_array_string(name: &str, boards: &[u128]) {
+pub fn write_board_array_string(name: &str, boards: &[BitBoard]) {
     // 设置每行列数,标题行
     let length = boards.len();
 
@@ -711,7 +744,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_constant_value() {
+    fn test_constant() {
         // mask
         write_board_array_string("MASK", &MASK);
         write_board_array_string("ROTATEMASK", &ROTATEMASK);
@@ -720,7 +753,7 @@ mod tests {
         write_board_array_string("KINGPUT", &KINGPUT);
         write_board_array_string("ADVISORPUT", &ADVISORPUT);
         write_board_array_string("BISHOPPUT", &BISHOPPUT);
-        let boards: Vec<u128> = vec![KNIGHTROOKCANNONPUT];
+        let boards: Vec<BitBoard> = vec![KNIGHTROOKCANNONPUT];
         write_board_array_string("KNIGHTROOKCANNONPUT", &boards);
         write_board_array_string("PAWNPUT", &PAWNPUT);
 
@@ -734,14 +767,14 @@ mod tests {
             let name = format!("KNIGHTMOVE[{index}]");
             write_board_array_string(&name, &KNIGHTMOVE[index]);
         }
-        for index in 0..ROWCOUNT {
+        for index in 0..COLCOUNT {
             let name = format!("ROOKROWMOVE[{index}]");
             write_board_array_string(&name, &ROOKROWMOVE[index]);
 
             let name = format!("CANNONROWMOVE[{index}]");
             write_board_array_string(&name, &CANNONROWMOVE[index]);
         }
-        for index in 0..COLCOUNT {
+        for index in 0..ROWCOUNT {
             let name = format!("ROOKCOLMOVE[{index}]");
             write_board_array_string(&name, &ROOKCOLMOVE[index]);
 

@@ -166,7 +166,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_ch_names() {
+    fn test_pieces() {
         let piece_chars = "_KABNRCPkabnrcp";
         let piece_names = "空帅仕相马车炮兵将士象马车炮卒";
         let piece_print_names = "空帅仕相马车炮兵将士象馬車砲卒";
