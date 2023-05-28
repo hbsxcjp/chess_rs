@@ -243,12 +243,6 @@ impl BitBoard {
     fn get_index_effects(&mut self, from_index: usize) -> Vec<MoveEffect> {
         let mut effects: Vec<MoveEffect> = Vec::new();
         for to_index in get_index_vec(self.get_index_move(from_index)) {
-            // effects.push(MoveEffect {
-            //     from_index,
-            //     to_index,
-            //     score: 0,
-            //     frequency: 0,
-            // });
             effects.push(self.domove_get_effect(from_index, to_index, Self::get_effect_killed));
         }
 
