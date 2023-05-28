@@ -1,22 +1,20 @@
 #![allow(dead_code)]
 
-use crate::board_constant::*;
+// use crate::constant;
+use crate::bit_board::*;
+use crate::bit_constant::*;
 use crate::piece::*;
 
+pub type Pieces = [Piece; SEATCOUNT];
+
+#[derive(Debug)]
 pub struct Board {
     // 基本数据
-    // colors: [Color; SEATCOUNT],
-    // kinds: [Kind; SEATCOUNT],
-    pieces: [[BitBoard; KINDCOUNT]; COLORCOUNT],
+    pieces: Pieces,
 
-    // 计算中间存储数据(基本局面改动时更新)
-    color_pieces: [BitBoard; COLORCOUNT],
-    all_pieces: BitBoard,
-    rotate_pieces: BitBoard,
-
-    // 哈希局面数据
-    hashkey: u64,
-    // private static HistoryRecord? historyRecord;
+    // 计算棋盘各种状态
+    bottom_color: Color,
+    bit_board: BitBoard,
 }
 
 const FEN: &str = "rnbakabnr/9/1c5c1/p1p1p1p1p/9/9/P1P1P1P1P/1C5C1/9/RNBAKABNR";
@@ -33,12 +31,32 @@ const POSCHARS: [char; 3] = ['前', '中', '后'];
 const MOVECHARS: [char; 3] = ['退', '平', '进'];
 
 fn piece_chars_to_fen(piece_chars: &str) -> String {
+    fn push_num_str(result: &mut String, null_num: &mut i32) {
+        if *null_num > 0 {
+            result.push_str(&null_num.to_string());
+            *null_num = 0;
+        };
+    }
+
     let mut result = String::new();
-    //  Regex.Replace(
-    //     string.Join(FENSplitChar,
-    //         Enumerable.Range(0, Coord.RowCount).Select(row => pieceChars.Substring(row * Coord.ColCount, Coord.ColCount))),
-    //     $"{Piece.NullCh}+",
-    //     match => match.Value.Length.ToString());
+    let mut null_num = 0;
+    let mut index = 0;
+    for ch in piece_chars.chars() {
+        if ch.is_ascii_alphabetic() {
+            push_num_str(&mut result, &mut null_num);
+            result.push(ch);
+        } else {
+            null_num += 1;
+        }
+
+        index += 1;
+        if index % COLCOUNT == 0 {
+            push_num_str(&mut result, &mut null_num);
+            if index < SEATCOUNT {
+                result.push(FENSPLITCHAR);
+            }
+        }
+    }
 
     result
 }
@@ -56,17 +74,62 @@ fn fen_to_piece_chars(fen: &str) -> String {
     result
 }
 
+fn piece_chars_to_pieces(piece_chars: &str) -> Pieces {
+    let mut result = [Piece::None; SEATCOUNT];
+    let mut index = 0;
+    for ch in piece_chars.chars() {
+        result[index] = Piece::new(ch);
+        index += 1;
+        if index == result.len() {
+            break;
+        }
+    }
+
+    result
+}
+
+pub fn fen_to_pieces(fen: &str) -> Pieces {
+    piece_chars_to_pieces(&fen_to_piece_chars(fen))
+}
+
+pub fn get_bottom_color(pieces: &Pieces) -> Color {
+    let mut bottom_color = Color::Red;
+    for index in get_put_indexs(Kind::King, true) {
+        match pieces[index] {
+            Piece::Some(color, Kind::King) => {
+                bottom_color = color;
+                break;
+            }
+            _ => (),
+        };
+    }
+
+    bottom_color
+}
+
 impl Board {
     pub fn new(fen: &str) -> Board {
-        let mut board: Board = Board {
-            pieces: [[0; KINDCOUNT]; COLORCOUNT],
-            color_pieces: [0; COLORCOUNT],
-            all_pieces: 0,
-            rotate_pieces: 0,
-            hashkey: 0,
-        };
+        let pieces = fen_to_pieces(fen);
+        Board {
+            pieces,
+            bottom_color: get_bottom_color(&pieces),
+            bit_board: BitBoard::new(&pieces),
+        }
+    }
 
-        board
+    pub fn to_string(&self) -> String {
+        let mut result = String::new();
+        let mut index = 0;
+        while index < SEATCOUNT {
+            result.push(self.pieces[index].print_name());
+
+            index += 1;
+            if index % COLCOUNT == 0 {
+                result.push('\n');
+            }
+        }
+
+        result
     }
 }
 
@@ -76,13 +139,70 @@ mod tests {
 
     #[test]
     fn test_board() {
-        let result = fen_to_piece_chars(FEN);
-        assert_eq!(result, "rnbakabnr__________c_____c_p_p_p_p_p__________________P_P_P_P_P_C_____C__________RNBAKABNR");
+        let fen_piece_chars=[
+            (FEN,
+            "rnbakabnr__________c_____c_p_p_p_p_p__________________P_P_P_P_P_C_____C__________RNBAKABNR",
+        "車馬象士将士象馬車
+－－－－－－－－－
+－砲－－－－－砲－
+卒－卒－卒－卒－卒
+－－－－－－－－－
+－－－－－－－－－
+兵－兵－兵－兵－兵
+－炮－－－－－炮－
+－－－－－－－－－
+车马相仕帅仕相马车
+"),
+            ("5a3/4ak2r/6R2/8p/9/9/9/B4N2B/4K4/3c5",
+            "_____a_______ak__r______R__________p___________________________B____N__B____K_______c_____",
+        "－－－－－士－－－
+－－－－士将－－車
+－－－－－－车－－
+－－－－－－－－卒
+－－－－－－－－－
+－－－－－－－－－
+－－－－－－－－－
+相－－－－马－－相
+－－－－帅－－－－
+－－－砲－－－－－
+"),
+            ("2b1kab2/4a4/4c4/9/9/3R5/9/1C7/4r4/2BK2B2",
+            "__b_kab______a________c_________________________R_______________C___________r______BK__B__",
+        "－－象－将士象－－
+－－－－士－－－－
+－－－－砲－－－－
+－－－－－－－－－
+－－－－－－－－－
+－－－车－－－－－
+－－－－－－－－－
+－炮－－－－－－－
+－－－－車－－－－
+－－相帅－－相－－
+"),
+            ("4kab2/4a4/4b4/3N5/9/4N4/4n4/4B4/4A4/3AK1B2",
+            "____kab______a________b_______N__________________N________n________B________A_______AK_B__",
+        "－－－－将士象－－
+－－－－士－－－－
+－－－－象－－－－
+－－－马－－－－－
+－－－－－－－－－
+－－－－马－－－－
+－－－－馬－－－－
+－－－－相－－－－
+－－－－仕－－－－
+－－－仕帅－相－－
+"),
+        ];
 
-        let result = fen_to_piece_chars("5a3/4ak2r/6R2/8p/9/9/9/B4N2B/4K4/3c5");
-        assert_eq!(result, "_____a_______ak__r______R__________p___________________________B____N__B____K_______c_____");
+        for (fen, piece_chars, to_string) in fen_piece_chars {
+            assert_eq!(fen_to_piece_chars(fen), piece_chars);
+            assert_eq!(piece_chars_to_fen(piece_chars), fen);
 
-        let result = fen_to_piece_chars("5k3/9/9/9/9/9/4rp3/2R1C4/4K4/9");
-        assert_eq!(result, "_____k____________________________________________________rp_____R_C________K_____________");
+            let board = Board::new(fen);
+            assert_eq!(board.to_string(), to_string);
+            // let name = fen.split_at(3).0;
+            // std::fs::write(format!("tests/{name}.txt"), board.to_string()).expect("Write Err.");
+            // dbg!(board);
+        }
     }
 }

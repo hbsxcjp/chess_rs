@@ -1,6 +1,7 @@
 mod piece;
-mod board_constant;
+mod bit_constant;
 mod board;
+mod bit_board;
 
 // pub use crate::piece;
 
