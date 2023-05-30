@@ -1,6 +1,6 @@
 #![allow(dead_code)]
 
-use crate::piece::*;
+use crate::piece;
 use rand::Rng;
 
 #[derive(Clone, Copy, Debug)]
@@ -41,7 +41,6 @@ pub type SideSeatBoardArray = [[BitAtom; SEATCOUNT]; SIDECOUNT];
 // static COLLIDEZOBRISTKEY: &[u64] = &ZOBRISTKEY[1][0][0..3];
 
 // mask
-pub const COORDS: CoordArray = create_coords();
 pub const MASK: SeatBoardArray = create_mask(false);
 pub const ROTATEMASK: SeatBoardArray = create_mask(true);
 
@@ -69,6 +68,41 @@ pub const CANNONCOLMOVE: ColStateSeatBoardArray = create_rookcannon_col_move(tru
 // 兵根据本方处于上或下的二个位置状态选取可移动位棋盘[is_bottom:0-1][index:0-89]
 pub const PAWNMOVE: SideSeatBoardArray = create_pawnmove();
 
+#[macro_export]
+macro_rules! to_rowcol {
+    ($index:expr) => {
+        ($index / COLCOUNT, $index % COLCOUNT)
+    };
+}
+
+#[macro_export]
+macro_rules! to_index {
+    ($row:expr, $col:expr) => {
+        $row * COLCOUNT + $col
+    };
+}
+
+#[macro_export]
+macro_rules! is_same_col {
+    ($the_index:expr,  $other_index:expr) => {
+        $the_index % COLCOUNT == $other_index % COLCOUNT
+    };
+}
+
+// #[macro_export]
+// macro_rules! mask {
+//     ($index:expr) => {
+//         1u128 << $index
+//     };
+// }
+
+// #[macro_export]
+// macro_rules! rotate_mask {
+//     ($index:expr) => {
+//         1u128 << (($index % COLCOUNT) * ROWCOUNT + ($index / COLCOUNT))
+//     };
+// }
+
 pub const fn get_index_array(mut bit_atom: BitAtom) -> (IndexArray, usize) {
     let mut index_array: IndexArray = [0; SEATCOUNT];
     let mut count: usize = 0;
@@ -93,30 +127,15 @@ pub fn get_index_vec(bit_atom: BitAtom) -> Vec<usize> {
     indexs
 }
 
-pub fn get_put_indexs(kind: Kind, is_bottom: bool) -> Vec<usize> {
+pub fn get_kind_put_indexs(kind: piece::Kind, is_bottom: bool) -> Vec<usize> {
     let side = if is_bottom { 1 } else { 0 };
     match kind {
-        Kind::King => get_index_vec(KINGPUT[side]),
-        Kind::Advisor => get_index_vec(ADVISORPUT[side]),
-        Kind::Bishop => get_index_vec(BISHOPPUT[side]),
-        Kind::Pawn => get_index_vec(PAWNPUT[side]),
+        piece::Kind::King => get_index_vec(KINGPUT[side]),
+        piece::Kind::Advisor => get_index_vec(ADVISORPUT[side]),
+        piece::Kind::Bishop => get_index_vec(BISHOPPUT[side]),
+        piece::Kind::Pawn => get_index_vec(PAWNPUT[side]),
         _ => (0..SEATCOUNT).collect(),
     }
-}
-
-const fn create_coords() -> CoordArray {
-    let mut coords: CoordArray = [Coord { row: 0, col: 0 }; SEATCOUNT];
-
-    let mut index = 0;
-    while index < coords.len() {
-        coords[index] = Coord {
-            row: index / COLCOUNT,
-            col: index % COLCOUNT,
-        };
-        index += 1;
-    }
-
-    coords
 }
 
 const fn create_mask(is_rotate: bool) -> SeatBoardArray {
@@ -124,8 +143,8 @@ const fn create_mask(is_rotate: bool) -> SeatBoardArray {
     let mut index = 0;
     while index < array.len() {
         let offset = if is_rotate {
-            let coord = COORDS[index];
-            coord.col * ROWCOUNT + coord.row
+            let (row, col) = to_rowcol!(index);
+            col * ROWCOUNT + row
         } else {
             index
         };
@@ -143,9 +162,7 @@ const fn create_kingput() -> SideBoardArray {
     while side < array.len() {
         let mut index = 0;
         while index < SEATCOUNT {
-            let coord = COORDS[index];
-            let row = coord.row;
-            let col = coord.col;
+            let (row, col) = to_rowcol!(index);
             let is_bottom = index >= SEATCOUNT / 2;
             let side = if is_bottom { 1 } else { 0 };
             if (row < 3 || row > 6) && (col > 2 && col < 6) {
@@ -167,9 +184,7 @@ const fn create_advisorput() -> SideBoardArray {
     while side < array.len() {
         let mut index = 0;
         while index < SEATCOUNT {
-            let coord = COORDS[index];
-            let row = coord.row;
-            let col = coord.col;
+            let (row, col) = to_rowcol!(index);
             let is_bottom = index >= SEATCOUNT / 2;
             let side = if is_bottom { 1 } else { 0 };
             if ((row == 0 || row == 2 || row == 7 || row == 9) && (col == 3 || col == 5))
@@ -193,9 +208,7 @@ const fn create_bishopput() -> SideBoardArray {
     while side < array.len() {
         let mut index = 0;
         while index < SEATCOUNT {
-            let coord = COORDS[index];
-            let row = coord.row;
-            let col = coord.col;
+            let (row, col) = to_rowcol!(index);
             let is_bottom = index >= SEATCOUNT / 2;
             let side = if is_bottom { 1 } else { 0 };
             if ((row == 0 || row == 4 || row == 5 || row == 9) && (col == 2 || col == 6))
@@ -219,9 +232,7 @@ const fn create_pawnput() -> SideBoardArray {
     while side < array.len() {
         let mut index = 0;
         while index < SEATCOUNT {
-            let coord = COORDS[index];
-            let row = coord.row;
-            let col = coord.col;
+            let (row, col) = to_rowcol!(index);
             let mut side = 0;
             while side < SIDECOUNT {
                 if (side == 1
@@ -254,10 +265,7 @@ const fn create_kingmove() -> SeatBoardArray {
     let mut valid_index: usize = 0;
     while valid_index < count {
         let index = index_array[valid_index];
-        let coord = COORDS[index];
-        let row = coord.row;
-        let col = coord.col;
-
+        let (row, col) = to_rowcol!(index);
         array[index] = if col > 3 { MASK[index - 1] } else { 0 }
             | if col < 5 { MASK[index + 1] } else { 0 }
             | if row == 1 || row == 2 || row == 8 || row == 9 {
@@ -283,10 +291,7 @@ const fn create_advisormove() -> SeatBoardArray {
     let mut valid_index: usize = 0;
     while valid_index < count {
         let index = index_array[valid_index];
-        let coord = COORDS[index];
-        let row = coord.row;
-        let col = coord.col;
-
+        let (row, col) = to_rowcol!(index);
         array[index] = if col == 4 {
             MASK[index - COLCOUNT - 1]
                 | MASK[index - COLCOUNT + 1]
@@ -311,9 +316,7 @@ const fn create_bishopmove() -> LegStateSeatBoardArray {
         let mut valid_index: usize = 0;
         while valid_index < count {
             let index = index_array[valid_index];
-            let coord = COORDS[index];
-            let row = coord.row;
-            let col = coord.col;
+            let (row, col) = to_rowcol!(index);
 
             let real_state = state
                 | if row == 0 || row == 5 {
@@ -365,11 +368,8 @@ const fn create_knightmove() -> LegStateSeatBoardArray {
     while state < LEGSTATECOUNT {
         let mut all_move = [0u128; SEATCOUNT];
         let mut index = 0;
-        while index < COORDS.len() {
-            let coord = COORDS[index];
-            let row = coord.row;
-            let col = coord.col;
-
+        while index < SEATCOUNT {
+            let (row, col) = to_rowcol!(index);
             let real_state = state
                 | if row == 0 {
                     0b1000
@@ -553,10 +553,7 @@ const fn create_pawnmove() -> SideSeatBoardArray {
         let mut valid_index: usize = 0;
         while valid_index < count {
             let index = index_array[valid_index];
-            let coord = COORDS[index];
-            let row = coord.row;
-            let col = coord.col;
-
+            let (row, col) = to_rowcol!(index);
             all_move[index] = if (side == 0 && row > 4) || (side == 1 && row < 5) {
                 (if col != 0 { MASK[index - 1] } else { 0 })
                     | if col != (COLCOUNT - 1) {
@@ -585,9 +582,7 @@ const fn create_pawnmove() -> SideSeatBoardArray {
 }
 
 pub fn get_bishop_move(index: usize, all_pieces: BitAtom) -> BitAtom {
-    let coord = COORDS[index];
-    let row = coord.row;
-    let col = coord.col;
+    let (row, col) = to_rowcol!(index);
     let is_top = row == 0 || row == 5;
     let is_bottom = row == 4 || row == ROWCOUNT - 1;
     let is_left = col == 0;
@@ -614,9 +609,7 @@ pub fn get_bishop_move(index: usize, all_pieces: BitAtom) -> BitAtom {
 }
 
 pub fn get_knight_move(index: usize, all_pieces: BitAtom) -> BitAtom {
-    let coord = COORDS[index];
-    let row = coord.row;
-    let col = coord.col;
+    let (row, col) = to_rowcol!(index);
     let state = (if row == 0 || (all_pieces & MASK[index - COLCOUNT]) != 0 {
         0b1000
     } else {
@@ -639,8 +632,7 @@ pub fn get_knight_move(index: usize, all_pieces: BitAtom) -> BitAtom {
 }
 
 pub fn get_rook_move(index: usize, all_pieces: BitAtom, rotate_all_pieces: BitAtom) -> BitAtom {
-    let row = COORDS[index].row;
-    let col = COORDS[index].col;
+    let (row, col) = to_rowcol!(index);
     let row_offset = row * COLCOUNT;
 
     return (ROOKROWMOVE[col][((all_pieces >> row_offset) & 0x1FF) as usize] << row_offset)
@@ -649,8 +641,7 @@ pub fn get_rook_move(index: usize, all_pieces: BitAtom, rotate_all_pieces: BitAt
 }
 
 pub fn get_cannon_move(index: usize, all_pieces: BitAtom, rotate_all_pieces: BitAtom) -> BitAtom {
-    let row = COORDS[index].row;
-    let col = COORDS[index].col;
+    let (row, col) = to_rowcol!(index);
     let row_offset = row * COLCOUNT;
 
     return (CANNONROWMOVE[col][((all_pieces >> row_offset) & 0x1FF) as usize] << row_offset)
@@ -819,5 +810,8 @@ mod tests {
             let name = format!("PAWNMOVE[{index}]");
             write_board_array_string(&name, &PAWNMOVE[index], false);
         }
+
+        // let (row, col) = to_rowcol!(89);
+        // print!("to_rowcol: ({row},{col})");
     }
 }

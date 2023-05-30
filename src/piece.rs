@@ -1,8 +1,7 @@
 #![allow(dead_code)]
 
 use num_enum::TryFromPrimitive;
-
-use crate::bit_constant::{COLORCOUNT, KINDCOUNT};
+use crate::bit_constant;
 
 #[derive(Clone, Copy, Debug, TryFromPrimitive, PartialEq)]
 #[repr(usize)]
@@ -59,8 +58,8 @@ const BLACKROOKNAME: char = '車';
 const BLACKCANNONNAME: char = '砲';
 const BLACKPAWNNAME: char = '卒';
 
-pub const COLORARRAY: [Color; COLORCOUNT] = [Color::Red, Color::Black];
-pub const KINDARRAY: [Kind; KINDCOUNT] = [
+pub const COLORARRAY: [Color; bit_constant::COLORCOUNT] = [Color::Red, Color::Black];
+pub const KINDARRAY: [Kind; bit_constant::KINDCOUNT] = [
     Kind::King,
     Kind::Advisor,
     Kind::Bishop,

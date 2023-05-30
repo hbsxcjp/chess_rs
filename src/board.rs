@@ -1,11 +1,10 @@
 #![allow(dead_code)]
 
-// use crate::constant;
-use crate::bit_board::*;
-use crate::bit_constant::*;
-use crate::piece::*;
+use crate::bit_board;
+use crate::bit_constant;
+use crate::piece;
 
-pub type Pieces = [Piece; SEATCOUNT];
+pub type Pieces = [piece::Piece; bit_constant::SEATCOUNT];
 
 #[derive(Debug)]
 pub struct Board {
@@ -13,15 +12,15 @@ pub struct Board {
     pieces: Pieces,
 
     // 计算棋盘各种状态
-    bottom_color: Color,
-    bit_board: BitBoard,
+    bottom_color: piece::Color,
+    bit_board: bit_board::BitBoard,
 }
 
 const FEN: &str = "rnbakabnr/9/1c5c1/p1p1p1p1p/9/9/P1P1P1P1P/1C5C1/9/RNBAKABNR";
 
 const FENSPLITCHAR: char = '/';
 
-const NUMCHARS: [[char; COLCOUNT]; COLORCOUNT] = [
+const NUMCHARS: [[char; bit_constant::COLCOUNT]; bit_constant::COLORCOUNT] = [
     ['一', '二', '三', '四', '五', '六', '七', '八', '九'],
     ['１', '２', '３', '４', '５', '６', '７', '８', '９'],
 ];
@@ -50,9 +49,9 @@ fn piece_chars_to_fen(piece_chars: &str) -> String {
         }
 
         index += 1;
-        if index % COLCOUNT == 0 {
+        if index % bit_constant::COLCOUNT == 0 {
             push_num_str(&mut result, &mut null_num);
-            if index < SEATCOUNT {
+            if index < bit_constant::SEATCOUNT {
                 result.push(FENSPLITCHAR);
             }
         }
@@ -75,10 +74,10 @@ fn fen_to_piece_chars(fen: &str) -> String {
 }
 
 fn piece_chars_to_pieces(piece_chars: &str) -> Pieces {
-    let mut result = [Piece::None; SEATCOUNT];
+    let mut result = [piece::Piece::None; bit_constant::SEATCOUNT];
     let mut index = 0;
     for ch in piece_chars.chars() {
-        result[index] = Piece::new(ch);
+        result[index] = piece::Piece::new(ch);
         index += 1;
         if index == result.len() {
             break;
@@ -92,11 +91,11 @@ pub fn fen_to_pieces(fen: &str) -> Pieces {
     piece_chars_to_pieces(&fen_to_piece_chars(fen))
 }
 
-pub fn get_bottom_color(pieces: &Pieces) -> Color {
-    let mut bottom_color = Color::Red;
-    for index in get_put_indexs(Kind::King, true) {
+pub fn get_bottom_color(pieces: &Pieces) -> piece::Color {
+    let mut bottom_color = piece::Color::Red;
+    for index in bit_constant::get_kind_put_indexs(piece::Kind::King, true) {
         match pieces[index] {
-            Piece::Some(color, Kind::King) => {
+            piece::Piece::Some(color, piece::Kind::King) => {
                 bottom_color = color;
                 break;
             }
@@ -113,18 +112,18 @@ impl Board {
         Board {
             pieces,
             bottom_color: get_bottom_color(&pieces),
-            bit_board: BitBoard::new(&pieces),
+            bit_board: bit_board::BitBoard::new(&pieces),
         }
     }
 
     pub fn to_string(&self) -> String {
         let mut result = String::new();
         let mut index = 0;
-        while index < SEATCOUNT {
+        while index < bit_constant::SEATCOUNT {
             result.push(self.pieces[index].print_name());
 
             index += 1;
-            if index % COLCOUNT == 0 {
+            if index % bit_constant::COLCOUNT == 0 {
                 result.push('\n');
             }
         }
