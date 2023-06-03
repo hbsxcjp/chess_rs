@@ -1,7 +1,7 @@
 #![allow(dead_code)]
 
 use crate::piece;
-use rand::Rng;
+// use rand::Rng;
 
 #[derive(Clone, Copy, Debug)]
 pub struct Coord {
@@ -21,7 +21,8 @@ pub const LEGSTATECOUNT: usize = 1 << 4;
 pub const COLSTATECOUNT: usize = 1 << ROWCOUNT;
 pub const ROWSTATECOUNT: usize = 1 << COLCOUNT;
 
-pub type ZobristArray = [[[u64; SEATCOUNT]; KINDCOUNT]; COLORCOUNT];
+pub type ZobristSeatArray = [[[u64; SEATCOUNT]; KINDCOUNT]; COLORCOUNT];
+pub type ZobristSideArray = [u64; COLORCOUNT];
 
 pub type BitAtom = u128;
 pub type IndexArray = [usize; SEATCOUNT];
@@ -34,11 +35,12 @@ pub type ColStateSeatBoardArray = [[BitAtom; COLSTATECOUNT]; ROWCOUNT];
 pub type SideSeatBoardArray = [[BitAtom; SEATCOUNT]; SIDECOUNT];
 
 // zobrist
-// static ZOBRISTKEY: ZobristArray = [[[0; SEATCOUNT]; KINDCOUNT]; COLORCOUNT];
-// static ZOBRISTLOCK: ZobristArray = [[[0; SEATCOUNT]; KINDCOUNT]; COLORCOUNT];
-// static COLORZOBRISTKEY: &[u64] = &ZOBRISTKEY[0][0][0..2];
-// static COLORZOBRISTLOCK: &[u64] = &ZOBRISTLOCK[0][0][0..2];
-// static COLLIDEZOBRISTKEY: &[u64] = &ZOBRISTKEY[1][0][0..3];
+pub const ZOBRISTKEY: ZobristSeatArray = create_zobrist_seat_array(100);
+pub const ZOBRISTLOCK: ZobristSeatArray = create_zobrist_seat_array(200);
+pub const COLORZOBRISTKEY: ZobristSideArray = create_zobrist_array(300);
+pub const COLORZOBRISTLOCK: ZobristSideArray = create_zobrist_array(400);
+// 碰撞测试
+pub const COLLIDEZOBRISTKEY: ZobristSideArray = create_zobrist_array(500);
 
 // mask
 pub const MASK: SeatBoardArray = create_mask(false);
@@ -136,6 +138,57 @@ pub fn get_kind_put_indexs(kind: piece::Kind, is_bottom: bool) -> Vec<usize> {
         piece::Kind::Pawn => get_index_vec(PAWNPUT[side]),
         _ => (0..SEATCOUNT).collect(),
     }
+}
+
+const fn xorshift64(prev_value: u64) -> u64 {
+    let mut next = prev_value;
+    next ^= next << 13;
+    next ^= next >> 7;
+    next ^= next << 17;
+
+    next
+}
+
+const fn create_zobrist_array(seed: u64) -> [u64; COLORCOUNT] {
+    let mut prev_value = xorshift64(seed);
+    let mut zobrist_array = [0; COLORCOUNT];
+    let mut index = 0;
+    while index < COLORCOUNT {
+        zobrist_array[index] = prev_value;
+        prev_value = xorshift64(prev_value);
+
+        index += 1;
+    }
+
+    zobrist_array
+}
+
+const fn create_zobrist_seat_array(seed: u64) -> ZobristSeatArray {
+    let mut prev_value = xorshift64(seed);
+    let mut zobrist: ZobristSeatArray = [[[0; SEATCOUNT]; KINDCOUNT]; COLORCOUNT];
+    let mut color = 0;
+    while color < COLORCOUNT {
+        let mut color_zobrist = [[0; SEATCOUNT]; KINDCOUNT];
+        let mut kind = 0;
+        while kind < KINDCOUNT {
+            let mut kind_zobrist = [0; SEATCOUNT];
+            let mut index = 0;
+            while index < SEATCOUNT {
+                kind_zobrist[index] = prev_value;
+                prev_value = xorshift64(prev_value);
+
+                index += 1;
+            }
+
+            color_zobrist[kind] = kind_zobrist;
+            kind += 1;
+        }
+
+        zobrist[color] = color_zobrist;
+        color += 1;
+    }
+
+    zobrist
 }
 
 const fn create_mask(is_rotate: bool) -> SeatBoardArray {
@@ -653,40 +706,6 @@ pub fn get_pawn_move(is_bottom: bool, index: usize) -> BitAtom {
     PAWNMOVE[if is_bottom { 1 } else { 0 }][index]
 }
 
-// 不能改成常量数据,那怎么改成静态数据?
-pub struct Constants {
-    zobrist_array: ZobristArray,
-}
-
-impl Constants {
-    pub fn new() -> Constants {
-        let result = Constants {
-            zobrist_array: Self::create_zobrist(),
-        };
-
-        result
-    }
-
-    pub fn create_zobrist() -> ZobristArray {
-        let mut zobrist: ZobristArray = [[[0; SEATCOUNT]; KINDCOUNT]; COLORCOUNT];
-        for color in 0..COLORCOUNT {
-            let mut color_zobrist = [[0; SEATCOUNT]; KINDCOUNT];
-            for kind in 0..KINDCOUNT {
-                let mut kind_zobrist = [0; SEATCOUNT];
-                for index in 0..SEATCOUNT {
-                    kind_zobrist[index] = rand::thread_rng().gen_range(u64::MIN..=u64::MAX);
-                }
-
-                color_zobrist[kind] = kind_zobrist;
-            }
-
-            zobrist[color] = color_zobrist;
-        }
-
-        return zobrist;
-    }
-}
-
 pub fn get_bitatom_array_string(boards: &[BitAtom], is_rotate: bool) -> String {
     let row_count = if is_rotate { COLCOUNT } else { ROWCOUNT };
     let col_count = if is_rotate { ROWCOUNT } else { COLCOUNT };
@@ -770,6 +789,18 @@ mod tests {
     #[test]
     #[ignore = "此测试将全部常量输出至文本文件，以备核查。"]
     fn test_constant() {
+        // zobrist
+        let mut result = format!("zorbist_array:\n");
+        result.push_str(&format!("COLORZOBRISTKEY: {COLORZOBRISTKEY:016x?}\n"));
+        result.push_str(&format!("COLORZOBRISTLOCK: {COLORZOBRISTLOCK:016x?}\n"));
+        result.push_str(&format!("COLLIDEZOBRISTKEY: {COLLIDEZOBRISTKEY:016x?}\n"));
+        result.push('\n');
+        result.push_str(&format!("ZOBRISTKEY: {ZOBRISTKEY:016x?}\n"));
+        result.push('\n');
+        result.push_str(&format!("ZOBRISTLOCK: {ZOBRISTLOCK:016x?}\n"));
+        result.push('\n');
+        std::fs::write("tests/constant/zorbist.txt", result).expect("Write Err.");
+
         // mask
         write_board_array_string("MASK", &MASK, false);
         write_board_array_string("ROTATEMASK", &ROTATEMASK, true);

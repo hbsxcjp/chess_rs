@@ -6,22 +6,26 @@ use crate::bit_constant::COLCOUNT;
 use crate::board;
 use crate::piece;
 
-type GetEffect =
-    fn(&BitBoard, from_index: usize, to_index: usize, eat_kind: piece::Kind) -> MoveEffect;
+type SetEffect =
+    fn(&BitBoard, move_effect: &mut MoveEffect, to_index: usize, eat_kind: piece::Kind);
+
+#[derive(Debug)]
+pub struct Effect {
+    pub to_index: usize,
+
+    pub score: i32,
+    pub frequency: i32,
+}
 
 #[derive(Debug)]
 pub struct MoveEffect {
-    from_index: usize,
-    to_index: usize,
-
-    score: i32,
-    frequency: i32,
+    pub from_index: usize,
+    pub effects: Vec<Effect>,
 }
 
-impl MoveEffect {
-    pub fn from(from_index: usize, to_index: usize, score: i32, frequency: i32) -> MoveEffect {
-        MoveEffect {
-            from_index,
+impl Effect {
+    pub fn new(to_index: usize, score: i32, frequency: i32) -> Effect {
+        Effect {
             to_index,
             score,
             frequency,
@@ -29,11 +33,34 @@ impl MoveEffect {
     }
 
     pub fn to_string(&self) -> String {
-        let (frow, fcol) = crate::to_rowcol!(self.from_index);
-        let (trow, tcol) = crate::to_rowcol!(self.to_index);
+        let (row, col) = crate::to_rowcol!(self.to_index);
         let score = self.score;
         let fre = self.frequency;
-        format!("[{},{}] => [{},{}] {score} {fre}\n", frow, fcol, trow, tcol)
+        format!("({},{}){score}{fre} ", row, col)
+    }
+}
+
+impl MoveEffect {
+    pub fn new(from_index: usize) -> MoveEffect {
+        MoveEffect {
+            from_index,
+            effects: Vec::new(),
+        }
+    }
+
+    pub fn add(&mut self, to_index: usize, score: i32, frequency: i32) {
+        self.effects.push(Effect::new(to_index, score, frequency));
+    }
+
+    pub fn to_string(&self) -> String {
+        let (frow, fcol) = crate::to_rowcol!(self.from_index);
+        let mut effect_str = format!("[{},{}] => ", frow, fcol);
+        for effect in self.effects.iter() {
+            effect_str.push_str(&effect.to_string());
+        }
+        effect_str.push_str(&format!("【{}】\n", self.effects.len()));
+
+        effect_str
     }
 }
 
@@ -51,6 +78,7 @@ pub struct BitBoard {
 
     // 哈希局面数据
     hashkey: u64,
+    hashlock: u64,
     // private static HistoryRecord? historyRecord;
 }
 
@@ -65,29 +93,40 @@ impl BitBoard {
             color_pieces: [0; bit_constant::COLORCOUNT],
             all_pieces: 0,
             rotate_all_pieces: 0,
+
             hashkey: 0,
+            hashlock: 0,
         };
 
-        let mut index = 0;
-        for piece in pieces {
-            match piece {
+        for index in 0..pieces.len() {
+            match pieces[index] {
                 piece::Piece::None => (),
                 piece::Piece::Some(color, kind) => {
-                    bit_board.colors[index] = *color;
-                    bit_board.kinds[index] = *kind;
+                    let color_i = color as usize;
+                    let kind_i = kind as usize;
+                    bit_board.colors[index] = color;
+                    bit_board.kinds[index] = kind;
 
-                    bit_board.color_kind_pieces[*color as usize][*kind as usize] |=
-                        bit_constant::MASK[index];
-                    bit_board.color_pieces[*color as usize] |= bit_constant::MASK[index];
+                    bit_board.color_kind_pieces[color_i][kind_i] |= bit_constant::MASK[index];
+                    bit_board.color_pieces[color_i] |= bit_constant::MASK[index];
                     bit_board.all_pieces |= bit_constant::MASK[index];
                     bit_board.rotate_all_pieces |= bit_constant::ROTATEMASK[index];
+
+                    bit_board.hashkey ^= bit_constant::ZOBRISTKEY[color_i][kind_i][index];
+                    bit_board.hashlock ^= bit_constant::ZOBRISTLOCK[color_i][kind_i][index];
                 }
             }
-
-            index += 1;
         }
 
         bit_board
+    }
+
+    pub fn get_hash_key(&self, color: piece::Color) -> u64 {
+        self.hashkey ^ bit_constant::COLORZOBRISTKEY[color as usize]
+    }
+
+    pub fn get_hash_lock(&self, color: piece::Color) -> u64 {
+        self.hashlock ^ bit_constant::COLORZOBRISTLOCK[color as usize]
     }
 
     fn get_index_move(&self, index: usize) -> bit_constant::BitAtom {
@@ -174,7 +213,8 @@ impl BitBoard {
         let end_index = if is_back { from_index } else { to_index };
         let from_color = self.colors[start_index];
         let from_kind = self.kinds[start_index];
-        let from_color_int = from_color as usize;
+        let from_color_i = from_color as usize;
+        let from_kind_i = from_kind as usize;
         let from_bitatrom = bit_constant::MASK[from_index];
         let to_bitatom = bit_constant::MASK[to_index];
         let move_bitatom = from_bitatrom | to_bitatom;
@@ -188,23 +228,26 @@ impl BitBoard {
         self.colors[start_index] = piece::Color::NoColor;
         self.kinds[start_index] = piece::Kind::NoKind;
 
-        self.color_kind_pieces[from_color_int][from_kind as usize] ^= move_bitatom;
-        self.color_pieces[from_color_int] ^= move_bitatom;
+        self.color_kind_pieces[from_color_i][from_kind_i] ^= move_bitatom;
+        self.color_pieces[from_color_i] ^= move_bitatom;
 
-        // hashkey ^= (BitConstants.ZobristKey[from_colorInt][from_kindInt][fromIndex] ^ BitConstants.ZobristKey[from_colorInt][from_kindInt][toIndex]);
-        // hashLock ^= (BitConstants.ZobristLock[from_colorInt][from_kindInt][fromIndex] ^ BitConstants.ZobristLock[from_colorInt][from_kindInt][toIndex]);
+        self.hashkey ^= bit_constant::ZOBRISTKEY[from_color_i][from_kind_i][from_index]
+            ^ bit_constant::ZOBRISTKEY[from_color_i][from_kind_i][to_index];
+        self.hashlock ^= bit_constant::ZOBRISTKEY[from_color_i][from_kind_i][from_index]
+            ^ bit_constant::ZOBRISTKEY[from_color_i][from_kind_i][to_index];
 
         if eat_kind != piece::Kind::NoKind {
+            let to_color_i = if from_color_i == 0 { 1 } else { 0 };
+            let eat_kind_i = eat_kind as usize;
             if is_back {
                 self.colors[start_index] = piece::other_color(from_color);
                 self.kinds[start_index] = eat_kind;
             }
-            let to_color_int = if from_color_int == 0 { 1 } else { 0 };
-            self.color_kind_pieces[to_color_int][eat_kind as usize] ^= to_bitatom;
-            self.color_pieces[to_color_int] ^= to_bitatom;
+            self.color_kind_pieces[to_color_i][eat_kind_i] ^= to_bitatom;
+            self.color_pieces[to_color_i] ^= to_bitatom;
 
-            // hashkey ^= BitConstants.ZobristKey[toColorInt][eatKindInt][toIndex];
-            // hashLock ^= BitConstants.ZobristLock[toColorInt][eatKindInt][toIndex];
+            self.hashkey ^= bit_constant::ZOBRISTKEY[to_color_i][eat_kind_i][to_index];
+            self.hashlock ^= bit_constant::ZOBRISTKEY[to_color_i][eat_kind_i][to_index];
 
             self.all_pieces ^= from_bitatrom;
             self.rotate_all_pieces ^= bit_constant::ROTATEMASK[from_index];
@@ -217,53 +260,47 @@ impl BitBoard {
         eat_kind
     }
 
-    fn get_effect_killed(
+    fn set_effect_killed(
         &self,
-        from_index: usize,
+        move_effect: &mut MoveEffect,
         to_index: usize,
         eat_kind: piece::Kind,
-    ) -> MoveEffect {
+    ) {
         // 如是对方将帅的位置则直接可走，不用判断是否被将军（如加以判断，则会直接走棋吃将帅）；棋子已走，取终点位置颜色
-        MoveEffect::from(
-            from_index,
-            to_index,
-            if eat_kind != piece::Kind::King && self.is_killed(self.colors[to_index]) {
-                -1
-            } else {
-                1
-            },
-            0,
-        )
+        let is_killed = eat_kind != piece::Kind::King && self.is_killed(self.colors[to_index]);
+        let score = if is_killed { -1 } else { 1 };
+        // 扩展，增加其他功能
+
+        move_effect.add(to_index, score, 0);
     }
 
     // 执行某一着后的效果(委托函数可叠加)
-    fn domove_get_effect(
+    fn domove_set_effect(
         &mut self,
-        from_index: usize,
+        move_effect: &mut MoveEffect,
         to_index: usize,
-        get_effect: GetEffect,
-    ) -> MoveEffect {
-        let eat_kind = self.do_move(from_index, to_index, false, piece::Kind::NoKind);
+        set_effect: SetEffect,
+    ) {
+        let eat_kind = self.do_move(move_effect.from_index, to_index, false, piece::Kind::NoKind);
 
-        let effect = get_effect(self, from_index, to_index, eat_kind);
+        set_effect(self, move_effect, to_index, eat_kind);
 
-        self.do_move(from_index, to_index, true, eat_kind);
-        effect
+        self.do_move(move_effect.from_index, to_index, true, eat_kind);
     }
 
-    fn get_index_effects(&mut self, from_index: usize) -> Vec<MoveEffect> {
-        let mut effects: Vec<MoveEffect> = Vec::new();
+    fn get_move_effect(&mut self, from_index: usize) -> MoveEffect {
+        let mut move_effect = MoveEffect::new(from_index);
         for to_index in bit_constant::get_index_vec(self.get_index_move(from_index)) {
-            effects.push(self.domove_get_effect(from_index, to_index, Self::get_effect_killed));
+            self.domove_set_effect(&mut move_effect, to_index, Self::set_effect_killed);
         }
 
-        effects
+        move_effect
     }
 
     fn get_bitatom_effects(&mut self, bit_atom: bit_constant::BitAtom) -> Vec<MoveEffect> {
         let mut effects: Vec<MoveEffect> = Vec::new();
         for from_index in bit_constant::get_index_vec(bit_atom) {
-            effects.append(&mut self.get_index_effects(from_index));
+            effects.push(self.get_move_effect(from_index));
         }
 
         effects
@@ -283,6 +320,35 @@ impl BitBoard {
 
     fn get_color_effects(&mut self, color: piece::Color) -> Vec<MoveEffect> {
         self.get_color_kind_effects(color, piece::Kind::NoKind)
+    }
+
+    pub fn to_moves_string(&mut self) -> String {
+        let mut result = format!("moves_string:\n");
+        for color in [piece::Color::Red, piece::Color::Black] {
+            let mut moves = Vec::new();
+            for index in bit_constant::get_index_vec(self.color_pieces[color as usize]) {
+                moves.push(self.get_index_move(index));
+            }
+
+            result.push_str(&bit_constant::get_bitatom_array_string(&moves, false));
+        }
+
+        result
+    }
+
+    pub fn to_effect_string(&mut self) -> String {
+        let mut result = format!("effect_string:\n");
+        for color in [piece::Color::Red, piece::Color::Black] {
+            let effects = self.get_color_effects(color);
+            let count = effects.len();
+            for effect in effects {
+                result.push_str(&effect.to_string());
+            }
+
+            result.push_str(&format!("count: {count}\n"));
+        }
+
+        result
     }
 
     pub fn to_string(&self) -> String {
@@ -324,6 +390,11 @@ impl BitBoard {
             true,
         ));
 
+        result.push_str(&format!(
+            "\nhashkey :{:016x}\nhashlock:{:016x}\n",
+            self.hashkey, self.hashlock
+        ));
+
         result
     }
 }
@@ -344,16 +415,12 @@ mod tests {
         for fen in fens {
             let mut bit_board = BitBoard::new(&board::fen_to_pieces(fen));
             let mut result = bit_board.to_string();
-            result.push('\n');
 
-            for color in [piece::Color::Red, piece::Color::Black] {
-                let effects = bit_board.get_color_effects(color);
-                let count = effects.len();
-                for effect in effects {
-                    result.push_str(&effect.to_string());
-                }
-                result.push_str(&format!("count: {count}\n\n"));
-            }
+            result.push('\n');
+            result.push_str(&&bit_board.to_moves_string());
+
+            result.push('\n');
+            result.push_str(&bit_board.to_effect_string());
 
             let name = fen.split_at(3).0;
             std::fs::write(format!("tests/{name}.txt"), result).expect("Write Err.");

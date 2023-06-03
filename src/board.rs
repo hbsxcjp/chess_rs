@@ -87,8 +87,21 @@ fn piece_chars_to_pieces(piece_chars: &str) -> Pieces {
     result
 }
 
+fn pieces_to_piece_chars(pieces: &Pieces) -> String {
+    let mut result = String::new();
+    for piece in pieces {
+        result.push(piece.ch());
+    }
+
+    result
+}
+
 pub fn fen_to_pieces(fen: &str) -> Pieces {
     piece_chars_to_pieces(&fen_to_piece_chars(fen))
+}
+
+fn pieces_to_fen(pieces: &Pieces) -> String {
+    piece_chars_to_fen(&pieces_to_piece_chars(pieces))
 }
 
 pub fn get_bottom_color(pieces: &Pieces) -> piece::Color {
@@ -116,11 +129,15 @@ impl Board {
         }
     }
 
+    pub fn get_fen(&self) -> String {
+        pieces_to_fen(&self.pieces)
+    }
+
     pub fn to_string(&self) -> String {
         let mut result = String::new();
         let mut index = 0;
-        while index < bit_constant::SEATCOUNT {
-            result.push(self.pieces[index].print_name());
+        for piece in self.pieces {
+            result.push(piece.print_name());
 
             index += 1;
             if index % bit_constant::COLCOUNT == 0 {
