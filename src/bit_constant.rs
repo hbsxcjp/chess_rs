@@ -9,6 +9,12 @@ pub struct Coord {
     pub col: usize,
 }
 
+#[derive(Clone, Copy, Debug)]
+pub struct CoordPair {
+    pub from_coord: Coord,
+    pub to_coord: Coord,
+}
+
 pub const COLORCOUNT: usize = 2;
 pub const KINDCOUNT: usize = 7;
 
@@ -33,6 +39,9 @@ pub type LegStateSeatBoardArray = [[BitAtom; SEATCOUNT]; LEGSTATECOUNT];
 pub type RowStateSeatBoardArray = [[BitAtom; ROWSTATECOUNT]; COLCOUNT];
 pub type ColStateSeatBoardArray = [[BitAtom; COLSTATECOUNT]; ROWCOUNT];
 pub type SideSeatBoardArray = [[BitAtom; SEATCOUNT]; SIDECOUNT];
+
+// coord
+// const COORDS: CoordArray = create_coord_array();
 
 // zobrist
 pub const ZOBRISTKEY: ZobristSeatArray = create_zobrist_seat_array(100);
@@ -77,11 +86,68 @@ macro_rules! to_rowcol {
     };
 }
 
-#[macro_export]
-macro_rules! to_index {
-    ($row:expr, $col:expr) => {
-        $row * COLCOUNT + $col
-    };
+// #[macro_export]
+// macro_rules! to_index {
+//     ($row:expr, $col:expr) => {
+//         $row * COLCOUNT + $col
+//     };
+// }
+
+impl Coord {
+    pub fn new() -> Self {
+        Coord { row: 0, col: 0 }
+    }
+
+    pub fn from_index(index: usize) -> Option<Self> {
+        if index < SEATCOUNT {
+            Some(Coord {
+                row: index / COLCOUNT,
+                col: index % COLCOUNT,
+            })
+        } else {
+            None
+        }
+    }
+
+    pub fn from_rowcol(row: usize, col: usize) -> Option<Self> {
+        if row < ROWCOUNT && col < COLCOUNT {
+            Some(Coord { row, col })
+        } else {
+            None
+        }
+    }
+
+    pub fn index(&self) -> usize {
+        self.row * COLCOUNT + self.col
+    }
+
+    pub fn to_string(&self) -> String {
+        format!("({},{})", self.row, self.col)
+    }
+}
+
+impl CoordPair {
+    pub fn new() -> Self {
+        CoordPair {
+            from_coord: Coord::new(),
+            to_coord: Coord::new(),
+        }
+    }
+
+    pub fn from(from_coord: Coord, to_coord: Coord) -> Self {
+        CoordPair {
+            from_coord,
+            to_coord,
+        }
+    }
+
+    pub fn to_string(&self) -> String {
+        format!(
+            "[{}->{}]",
+            self.from_coord.to_string(),
+            self.to_coord.to_string()
+        )
+    }
 }
 
 #[macro_export]
@@ -105,6 +171,21 @@ macro_rules! is_same_col {
 //     };
 // }
 
+// const fn create_coord_array() -> CoordArray {
+//     let mut coords = [Coord { row: 0, col: 0 }; SEATCOUNT];
+//     let mut index = 0;
+//     while index < coords.len() {
+//         coords[index] = Coord {
+//             row: index / COLCOUNT,
+//             col: index % COLCOUNT,
+//         };
+
+//         index += 1;
+//     }
+
+//     coords
+// }
+
 pub const fn get_index_array(mut bit_atom: BitAtom) -> (IndexArray, usize) {
     let mut index_array: IndexArray = [0; SEATCOUNT];
     let mut count: usize = 0;
@@ -119,7 +200,7 @@ pub const fn get_index_array(mut bit_atom: BitAtom) -> (IndexArray, usize) {
     (index_array, count)
 }
 
-pub fn get_index_vec(bit_atom: BitAtom) -> Vec<usize> {
+pub fn get_indexs_from_bitatom(bit_atom: BitAtom) -> Vec<usize> {
     let mut indexs: Vec<usize> = Vec::new();
     let (index_array, count) = get_index_array(bit_atom);
     for idx in 0..count {
@@ -130,12 +211,12 @@ pub fn get_index_vec(bit_atom: BitAtom) -> Vec<usize> {
 }
 
 pub fn get_kind_put_indexs(kind: piece::Kind, is_bottom: bool) -> Vec<usize> {
-    let side = if is_bottom { 1 } else { 0 };
+    let side = is_bottom as usize;
     match kind {
-        piece::Kind::King => get_index_vec(KINGPUT[side]),
-        piece::Kind::Advisor => get_index_vec(ADVISORPUT[side]),
-        piece::Kind::Bishop => get_index_vec(BISHOPPUT[side]),
-        piece::Kind::Pawn => get_index_vec(PAWNPUT[side]),
+        piece::Kind::King => get_indexs_from_bitatom(KINGPUT[side]),
+        piece::Kind::Advisor => get_indexs_from_bitatom(ADVISORPUT[side]),
+        piece::Kind::Bishop => get_indexs_from_bitatom(BISHOPPUT[side]),
+        piece::Kind::Pawn => get_indexs_from_bitatom(PAWNPUT[side]),
         _ => (0..SEATCOUNT).collect(),
     }
 }
@@ -841,8 +922,5 @@ mod tests {
             let name = format!("PAWNMOVE[{index}]");
             write_board_array_string(&name, &PAWNMOVE[index], false);
         }
-
-        // let (row, col) = to_rowcol!(89);
-        // print!("to_rowcol: ({row},{col})");
     }
 }

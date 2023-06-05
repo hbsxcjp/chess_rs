@@ -3,66 +3,12 @@
 
 use crate::bit_constant;
 use crate::bit_constant::COLCOUNT;
+use crate::bit_effect;
 use crate::board;
 use crate::piece;
 
 type SetEffect =
-    fn(&BitBoard, move_effect: &mut MoveEffect, to_index: usize, eat_kind: piece::Kind);
-
-#[derive(Debug)]
-pub struct Effect {
-    pub to_index: usize,
-
-    pub score: i32,
-    pub frequency: i32,
-}
-
-#[derive(Debug)]
-pub struct MoveEffect {
-    pub from_index: usize,
-    pub effects: Vec<Effect>,
-}
-
-impl Effect {
-    pub fn new(to_index: usize, score: i32, frequency: i32) -> Effect {
-        Effect {
-            to_index,
-            score,
-            frequency,
-        }
-    }
-
-    pub fn to_string(&self) -> String {
-        let (row, col) = crate::to_rowcol!(self.to_index);
-        let score = self.score;
-        let fre = self.frequency;
-        format!("({},{}){score}{fre} ", row, col)
-    }
-}
-
-impl MoveEffect {
-    pub fn new(from_index: usize) -> MoveEffect {
-        MoveEffect {
-            from_index,
-            effects: Vec::new(),
-        }
-    }
-
-    pub fn add(&mut self, to_index: usize, score: i32, frequency: i32) {
-        self.effects.push(Effect::new(to_index, score, frequency));
-    }
-
-    pub fn to_string(&self) -> String {
-        let (frow, fcol) = crate::to_rowcol!(self.from_index);
-        let mut effect_str = format!("[{},{}] => ", frow, fcol);
-        for effect in self.effects.iter() {
-            effect_str.push_str(&effect.to_string());
-        }
-        effect_str.push_str(&format!("【{}】\n", self.effects.len()));
-
-        effect_str
-    }
-}
+    fn(&BitBoard, move_effect: &mut bit_effect::MoveEffect, to_index: usize, eat_kind: piece::Kind);
 
 #[derive(Debug)]
 pub struct BitBoard {
@@ -129,7 +75,7 @@ impl BitBoard {
         self.hashlock ^ bit_constant::COLORZOBRISTLOCK[color as usize]
     }
 
-    fn get_index_move(&self, index: usize) -> bit_constant::BitAtom {
+    fn get_move_from_index(&self, index: usize) -> bit_constant::BitAtom {
         let color = self.colors[index];
         let kind = self.kinds[index];
         let result = match kind {
@@ -151,21 +97,25 @@ impl BitBoard {
         result ^ (result & self.color_pieces[color as usize])
     }
 
-    fn get_bitatom_move(&self, bit_atom: bit_constant::BitAtom) -> bit_constant::BitAtom {
+    fn get_move_from_bitatom(&self, bit_atom: bit_constant::BitAtom) -> bit_constant::BitAtom {
         let mut result = 0;
-        for index in bit_constant::get_index_vec(bit_atom) {
-            result |= self.get_index_move(index);
+        for index in bit_constant::get_indexs_from_bitatom(bit_atom) {
+            result |= self.get_move_from_index(index);
         }
 
         result
     }
 
-    fn get_color_kind_move(&self, color: piece::Color, kind: piece::Kind) -> bit_constant::BitAtom {
-        self.get_bitatom_move(self.color_kind_pieces[color as usize][kind as usize])
+    fn get_move_from_color_kind(
+        &self,
+        color: piece::Color,
+        kind: piece::Kind,
+    ) -> bit_constant::BitAtom {
+        self.get_move_from_bitatom(self.color_kind_pieces[color as usize][kind as usize])
     }
 
-    fn get_color_move(&self, color: piece::Color) -> bit_constant::BitAtom {
-        self.get_bitatom_move(self.color_pieces[color as usize])
+    fn get_move_from_color(&self, color: piece::Color) -> bit_constant::BitAtom {
+        self.get_move_from_bitatom(self.color_pieces[color as usize])
     }
 
     pub fn is_killed(&self, color: piece::Color) -> bool {
@@ -195,11 +145,11 @@ impl BitBoard {
             true
         };
 
-        king_face() || (self.get_color_move(other_color) & king_bitatom) != 0
+        king_face() || (self.get_move_from_color(other_color) & king_bitatom) != 0
     }
 
     pub fn is_failed(&self, color: piece::Color) -> bool {
-        self.get_color_move(color) == 0
+        self.get_move_from_color(color) == 0
     }
 
     fn do_move(
@@ -231,10 +181,10 @@ impl BitBoard {
         self.color_kind_pieces[from_color_i][from_kind_i] ^= move_bitatom;
         self.color_pieces[from_color_i] ^= move_bitatom;
 
-        self.hashkey ^= bit_constant::ZOBRISTKEY[from_color_i][from_kind_i][from_index]
-            ^ bit_constant::ZOBRISTKEY[from_color_i][from_kind_i][to_index];
-        self.hashlock ^= bit_constant::ZOBRISTKEY[from_color_i][from_kind_i][from_index]
-            ^ bit_constant::ZOBRISTKEY[from_color_i][from_kind_i][to_index];
+        // self.hashkey ^= bit_constant::ZOBRISTKEY[from_color_i][from_kind_i][from_index]
+        //     ^ bit_constant::ZOBRISTKEY[from_color_i][from_kind_i][to_index];
+        // self.hashlock ^= bit_constant::ZOBRISTKEY[from_color_i][from_kind_i][from_index]
+        //     ^ bit_constant::ZOBRISTKEY[from_color_i][from_kind_i][to_index];
 
         if eat_kind != piece::Kind::NoKind {
             let to_color_i = if from_color_i == 0 { 1 } else { 0 };
@@ -246,8 +196,8 @@ impl BitBoard {
             self.color_kind_pieces[to_color_i][eat_kind_i] ^= to_bitatom;
             self.color_pieces[to_color_i] ^= to_bitatom;
 
-            self.hashkey ^= bit_constant::ZOBRISTKEY[to_color_i][eat_kind_i][to_index];
-            self.hashlock ^= bit_constant::ZOBRISTKEY[to_color_i][eat_kind_i][to_index];
+            // self.hashkey ^= bit_constant::ZOBRISTKEY[to_color_i][eat_kind_i][to_index];
+            // self.hashlock ^= bit_constant::ZOBRISTKEY[to_color_i][eat_kind_i][to_index];
 
             self.all_pieces ^= from_bitatrom;
             self.rotate_all_pieces ^= bit_constant::ROTATEMASK[from_index];
@@ -262,22 +212,22 @@ impl BitBoard {
 
     fn set_effect_killed(
         &self,
-        move_effect: &mut MoveEffect,
+        move_effect: &mut bit_effect::MoveEffect,
         to_index: usize,
         eat_kind: piece::Kind,
     ) {
         // 如是对方将帅的位置则直接可走，不用判断是否被将军（如加以判断，则会直接走棋吃将帅）；棋子已走，取终点位置颜色
         let is_killed = eat_kind != piece::Kind::King && self.is_killed(self.colors[to_index]);
-        let score = if is_killed { -1 } else { 1 };
+        let score = if is_killed { -1 } else { 0 };
         // 扩展，增加其他功能
 
         move_effect.add(to_index, score, 0);
     }
 
     // 执行某一着后的效果(委托函数可叠加)
-    fn domove_set_effect(
+    fn domove_set_effect_undo_move(
         &mut self,
-        move_effect: &mut MoveEffect,
+        move_effect: &mut bit_effect::MoveEffect,
         to_index: usize,
         set_effect: SetEffect,
     ) {
@@ -288,46 +238,50 @@ impl BitBoard {
         self.do_move(move_effect.from_index, to_index, true, eat_kind);
     }
 
-    fn get_move_effect(&mut self, from_index: usize) -> MoveEffect {
-        let mut move_effect = MoveEffect::new(from_index);
-        for to_index in bit_constant::get_index_vec(self.get_index_move(from_index)) {
-            self.domove_set_effect(&mut move_effect, to_index, Self::set_effect_killed);
+    fn get_effect_from_index(&mut self, from_index: usize) -> bit_effect::MoveEffect {
+        let mut move_effect = bit_effect::MoveEffect::new(from_index);
+        for to_index in bit_constant::get_indexs_from_bitatom(self.get_move_from_index(from_index))
+        {
+            self.domove_set_effect_undo_move(&mut move_effect, to_index, Self::set_effect_killed);
         }
 
         move_effect
     }
 
-    fn get_bitatom_effects(&mut self, bit_atom: bit_constant::BitAtom) -> Vec<MoveEffect> {
-        let mut effects: Vec<MoveEffect> = Vec::new();
-        for from_index in bit_constant::get_index_vec(bit_atom) {
-            effects.push(self.get_move_effect(from_index));
+    fn get_effects_from_bitatom(
+        &mut self,
+        bit_atom: bit_constant::BitAtom,
+    ) -> Vec<bit_effect::MoveEffect> {
+        let mut effects: Vec<bit_effect::MoveEffect> = Vec::new();
+        for from_index in bit_constant::get_indexs_from_bitatom(bit_atom) {
+            effects.push(self.get_effect_from_index(from_index));
         }
 
         effects
     }
 
     // kind == piece::Kind::NoKind，取全部种类棋子
-    fn get_color_kind_effects(
+    fn get_effects_from_color_kind(
         &mut self,
         color: piece::Color,
         kind: piece::Kind,
-    ) -> Vec<MoveEffect> {
-        self.get_bitatom_effects(match kind {
+    ) -> Vec<bit_effect::MoveEffect> {
+        self.get_effects_from_bitatom(match kind {
             piece::Kind::NoKind => self.color_pieces[color as usize],
             _ => self.color_kind_pieces[color as usize][kind as usize],
         })
     }
 
-    fn get_color_effects(&mut self, color: piece::Color) -> Vec<MoveEffect> {
-        self.get_color_kind_effects(color, piece::Kind::NoKind)
+    pub fn get_effects_from_color(&mut self, color: piece::Color) -> Vec<bit_effect::MoveEffect> {
+        self.get_effects_from_color_kind(color, piece::Kind::NoKind)
     }
 
     pub fn to_moves_string(&mut self) -> String {
         let mut result = format!("moves_string:\n");
         for color in [piece::Color::Red, piece::Color::Black] {
             let mut moves = Vec::new();
-            for index in bit_constant::get_index_vec(self.color_pieces[color as usize]) {
-                moves.push(self.get_index_move(index));
+            for index in bit_constant::get_indexs_from_bitatom(self.color_pieces[color as usize]) {
+                moves.push(self.get_move_from_index(index));
             }
 
             result.push_str(&bit_constant::get_bitatom_array_string(&moves, false));
@@ -336,10 +290,10 @@ impl BitBoard {
         result
     }
 
-    pub fn to_effect_string(&mut self) -> String {
+    pub fn to_effects_string(&mut self) -> String {
         let mut result = format!("effect_string:\n");
         for color in [piece::Color::Red, piece::Color::Black] {
-            let effects = self.get_color_effects(color);
+            let effects = self.get_effects_from_color(color);
             let count = effects.len();
             for effect in effects {
                 result.push_str(&effect.to_string());
@@ -420,7 +374,7 @@ mod tests {
             result.push_str(&&bit_board.to_moves_string());
 
             result.push('\n');
-            result.push_str(&bit_board.to_effect_string());
+            result.push_str(&bit_board.to_effects_string());
 
             let name = fen.split_at(3).0;
             std::fs::write(format!("tests/{name}.txt"), result).expect("Write Err.");

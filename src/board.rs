@@ -10,13 +10,12 @@ pub type Pieces = [piece::Piece; bit_constant::SEATCOUNT];
 pub struct Board {
     // 基本数据
     pieces: Pieces,
-
     // 计算棋盘各种状态
-    bottom_color: piece::Color,
-    bit_board: bit_board::BitBoard,
+    // bottom_color: piece::Color,
+    // bit_board: bit_board::BitBoard,
 }
 
-const FEN: &str = "rnbakabnr/9/1c5c1/p1p1p1p1p/9/9/P1P1P1P1P/1C5C1/9/RNBAKABNR";
+pub const FEN: &str = "rnbakabnr/9/1c5c1/p1p1p1p1p/9/9/P1P1P1P1P/1C5C1/9/RNBAKABNR";
 
 const FENSPLITCHAR: char = '/';
 
@@ -29,7 +28,7 @@ const POSCHARS: [char; 3] = ['前', '中', '后'];
 
 const MOVECHARS: [char; 3] = ['退', '平', '进'];
 
-fn piece_chars_to_fen(piece_chars: &str) -> String {
+pub fn piece_chars_to_fen(piece_chars: &str) -> String {
     fn push_num_str(result: &mut String, null_num: &mut i32) {
         if *null_num > 0 {
             result.push_str(&null_num.to_string());
@@ -120,17 +119,20 @@ pub fn get_bottom_color(pieces: &Pieces) -> piece::Color {
 }
 
 impl Board {
-    pub fn new(fen: &str) -> Board {
-        let pieces = fen_to_pieces(fen);
+    pub fn new(fen: &str) -> Self {
         Board {
-            pieces,
-            bottom_color: get_bottom_color(&pieces),
-            bit_board: bit_board::BitBoard::new(&pieces),
+            pieces: fen_to_pieces(fen),
+            // bottom_color: get_bottom_color(&pieces),
+            // bit_board: bit_board::BitBoard::new(&pieces),
         }
     }
 
     pub fn get_fen(&self) -> String {
         pieces_to_fen(&self.pieces)
+    }
+
+    pub fn bit_board(&self) -> bit_board::BitBoard {
+        bit_board::BitBoard::new(&self.pieces)
     }
 
     pub fn to_string(&self) -> String {
