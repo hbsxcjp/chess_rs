@@ -134,11 +134,21 @@ impl CoordPair {
         }
     }
 
-    pub fn from(from_coord: Coord, to_coord: Coord) -> Self {
+    pub fn from_coord(from_coord: Coord, to_coord: Coord) -> Self {
         CoordPair {
             from_coord,
             to_coord,
         }
+    }
+
+    pub fn from_rowcol(frow: usize, fcol: usize, trow: usize, tcol: usize) -> Option<Self> {
+        if let Some(from_coord) = Coord::from_rowcol(frow, fcol) {
+            if let Some(to_coord) = Coord::from_rowcol(trow, tcol) {
+                return Some(CoordPair::from_coord(from_coord, to_coord));
+            }
+        }
+
+        None
     }
 
     pub fn to_string(&self) -> String {
