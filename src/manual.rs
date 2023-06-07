@@ -34,6 +34,12 @@ pub enum InfoKey {
     MoveString,
 }
 
+impl InfoKey {
+    pub fn to_string(&self) -> String {
+        format!("{:?}", self)
+    }
+}
+
 #[derive(Debug)]
 pub struct Manual {
     pub info: HashMap<String, String>,
@@ -51,7 +57,7 @@ impl Manual {
 
     fn from_xqf(file_name: &str) -> Self {
         let mut manual = Manual::new();
-        if let Ok(mut byte_vec) = std::fs::read(file_name) {
+        if let Ok(byte_vec) = std::fs::read(file_name) {
             //文件标记'XQ'=$5158/版本/加密掩码/ProductId[4], 产品(厂商的产品号)
             // 棋谱评论员/文件的作者
             // 32个棋子的原始位置
@@ -91,23 +97,17 @@ impl Manual {
             let headkeyorb = byte_vec[9];
             let headkeyorc = byte_vec[10];
             let headkeyord = byte_vec[11];
-            let headkeyssum = byte_vec[12];
-            let headkeyxy = byte_vec[13];
-            let headkeyxyf = byte_vec[14];
-            let headkeyxyt = byte_vec[15];
+            let headkeyssum = byte_vec[12] as usize;
+            let headkeyxy = byte_vec[13] as usize;
+            let headkeyxyf = byte_vec[14] as usize;
+            let headkeyxyt = byte_vec[15] as usize;
             // let headwhoplay = byte_vec[50];
-            let headplayresult = byte_vec[51];
+            let headplayresult = byte_vec[51] as usize;
 
             if signature[0] != 0x58 || signature[1] != 0x51 {
                 assert!(false, "文件标记不符。");
             }
-            if (headkeyssum as usize
-                + headkeyxy as usize
-                + headkeyxyf as usize
-                + headkeyxyt as usize)
-                % 256
-                != 0
-            {
+            if (headkeyssum + headkeyxy + headkeyxyf + headkeyxyt) % 256 != 0 {
                 assert!(false, "检查密码校验和不对，不等于0。");
             }
             if version > 18 {
@@ -117,17 +117,17 @@ impl Manual {
                 );
             }
 
-            let keyxyf: u8;
-            let keyxyt: u8;
-            let keyrmksize: u32;
+            let keyxyf: usize;
+            let keyxyt: usize;
+            let keyrmksize: usize;
             let mut f32keys = [0; PIECENUM];
 
             let mut head_qizixy = [0; PIECENUM];
             for index in 0..PIECENUM {
-                head_qizixy[index] = headqizixy[index];
+                head_qizixy[index] = headqizixy[index] as usize;
             }
+            // version <= 10 兼容1.0以前的版本
             if version <= 10 {
-                // version <= 10 兼容1.0以前的版本
                 keyrmksize = 0;
                 keyxyf = 0;
                 keyxyt = 0;
@@ -135,31 +135,32 @@ impl Manual {
                 let keyxy;
                 let calkey = |bkey, ckey| {
                     // % 256; // 保持为<256
-                    ((((((bkey as usize * bkey as usize) * 3 + 9) * 3 + 8) * 2 + 1) * 3 + 8)
-                        * ckey as usize) as u8
+                    ((((((bkey * bkey) * 3 + 9) * 3 + 8) * 2 + 1) * 3 + 8) * ckey) as u8 as usize
                 };
 
                 keyxy = calkey(headkeyxy, headkeyxy);
                 keyxyf = calkey(headkeyxyf, keyxy);
                 keyxyt = calkey(headkeyxyt, keyxyf);
-                keyrmksize = ((headkeyssum as u32 * 256 + headkeyxy as u32) % 32000) + 767; // % 65536
+                // % 65536
+                keyrmksize = ((headkeyssum * 256 + headkeyxy) % 32000) + 767;
+                // 棋子位置循环移动
                 if version >= 12 {
-                    // 棋子位置循环移动
                     let qixy = headqizixy.clone();
                     for index in 0..PIECENUM {
-                        head_qizixy[(index + keyxy as usize + 1) % PIECENUM] = qixy[index];
+                        head_qizixy[(index + keyxy + 1) % PIECENUM] = qixy[index] as usize;
                     }
                 }
-                for index in 0..PIECENUM {
-                    head_qizixy[index] -= keyxy;
-                } // 保持为8位无符号整数，<256
+                for qizixy in &mut head_qizixy {
+                    // 保持为8位无符号整数，<256
+                    *qizixy = (*qizixy - keyxy) as u8 as usize;
+                }
             }
 
             let keybytes = [
-                (headkeyssum & headkeymask) | headkeyora,
-                (headkeyxy & headkeymask) | headkeyorb,
-                (headkeyxyf & headkeymask) | headkeyorc,
-                (headkeyxyt & headkeymask) | headkeyord,
+                (headkeyssum as u8 & headkeymask) | headkeyora,
+                (headkeyxy as u8 & headkeymask) | headkeyorb,
+                (headkeyxyf as u8 & headkeymask) | headkeyorc,
+                (headkeyxyt as u8 & headkeymask) | headkeyord,
             ];
             let mut index = 0;
             for ch in "[(C) Copyright Mr. Dong Shiwei.]".bytes() {
@@ -169,7 +170,7 @@ impl Manual {
 
             // 取得棋子字符串
             let mut piece_chars = vec![b'_'; SEATCOUNT];
-            let mut index = 0;
+            index = 0;
             // QiziXY设定的棋子顺序
             for ch in "RNBAKABNRCCPPPPPrnbakabnrccppppp".bytes() {
                 let xy = head_qizixy[index] as usize;
@@ -180,12 +181,8 @@ impl Manual {
                 }
                 index += 1;
             }
-            let fen = board::piece_chars_to_fen(&String::from_utf8(piece_chars).unwrap());
 
-            // Info = new();
-            // System.Text.Encoding.RegisterProvider(System.Text.CodePagesEncodingProvider.Instance);
-            // Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
-            // Encoding codec = Encoding.GetEncoding("gb2312"); // "gb2312"
+            let fen = board::piece_chars_to_fen(&String::from_utf8(piece_chars).unwrap());
             let result = ["未知", "红胜", "黑胜", "和棋"];
             let typestr = ["全局", "开局", "中局", "残局"];
             let bytes_to_string = |bytes| {
@@ -212,17 +209,11 @@ impl Manual {
                 (InfoKey::Writer, bytes_to_string(rmkwriter)),
                 (InfoKey::Author, bytes_to_string(author)),
             ] {
-                manual.set_infokey_value((key as usize).to_string(), value);
+                manual.set_infokey_value(key.to_string(), value);
             }
 
             manual.manual_move.set_from(
-                &fen,
-                &byte_vec.split_off(1024),
-                version,
-                keyxyf,
-                keyxyt,
-                keyrmksize,
-                &f32keys,
+                &fen, &byte_vec, version, keyxyf, keyxyt, keyrmksize, &f32keys,
             );
         }
 

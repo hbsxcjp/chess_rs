@@ -3,13 +3,12 @@
 use crate::piece;
 // use rand::Rng;
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Coord {
     pub row: usize,
     pub col: usize,
 }
-
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub struct CoordPair {
     pub from_coord: Coord,
     pub to_coord: Coord,

@@ -43,6 +43,10 @@ impl Move {
         step_clone
     }
 
+    pub fn is_root(&self) -> bool {
+        self.before.upgrade().is_none()
+    }
+
     fn to_base_string(&self) -> String {
         format!("{} {}\n", self.coordpair.to_string(), self.remark.borrow())
     }
