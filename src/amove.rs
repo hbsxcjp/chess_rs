@@ -48,12 +48,20 @@ impl Move {
     }
 
     fn to_base_string(&self) -> String {
-        format!("{} {}\n", self.coordpair.to_string(), self.remark.borrow())
+        let mut result = self.coordpair.to_string();
+        let remark = self.remark.borrow();
+        if remark.len() > 0 {
+            result.push_str(&format!("{{{}}}", remark));
+        }
+        result.push('\n');
+
+        result
     }
 
     pub fn to_string(&self) -> String {
         let mut result = self.to_base_string();
         for after_move in self.after.borrow().iter() {
+            // result.push('\t');
             result.push_str(&after_move.to_string());
         }
 
@@ -78,7 +86,7 @@ mod tests {
         root_move.add(coordpair, remark);
 
         assert_eq!(
-            "[(0,0)->(0,0)] \n[(0,0)->(0,2)] Hello, move.\n",
+            "[(0,0)->(0,0)]\n[(0,0)->(0,2)]{Hello, move.}\n",
             root_move.to_string()
         );
     }

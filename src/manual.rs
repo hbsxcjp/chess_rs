@@ -51,12 +51,13 @@ impl Manual {
     pub fn new() -> Self {
         Manual {
             info: HashMap::new(),
-            manual_move: manual_move::ManualMove::new(board::FEN),
+            manual_move: manual_move::ManualMove::new(),
         }
     }
 
     fn from_xqf(file_name: &str) -> Self {
-        let mut manual = Manual::new();
+        let mut info = HashMap::new();
+        let mut manual_move = manual_move::ManualMove::new();
         if let Ok(byte_vec) = std::fs::read(file_name) {
             //文件标记'XQ'=$5158/版本/加密掩码/ProductId[4], 产品(厂商的产品号)
             // 棋谱评论员/文件的作者
@@ -122,9 +123,9 @@ impl Manual {
             let keyrmksize: usize;
             let mut f32keys = [0; PIECENUM];
 
-            let mut head_qizixy = [0; PIECENUM];
+            let mut head_qizixy = [0u8; PIECENUM];
             for index in 0..PIECENUM {
-                head_qizixy[index] = headqizixy[index] as usize;
+                head_qizixy[index] = headqizixy[index];
             }
             // version <= 10 兼容1.0以前的版本
             if version <= 10 {
@@ -147,12 +148,12 @@ impl Manual {
                 if version >= 12 {
                     let qixy = headqizixy.clone();
                     for index in 0..PIECENUM {
-                        head_qizixy[(index + keyxy + 1) % PIECENUM] = qixy[index] as usize;
+                        head_qizixy[(index + keyxy + 1) % PIECENUM] = qixy[index];
                     }
                 }
                 for qizixy in &mut head_qizixy {
                     // 保持为8位无符号整数，<256
-                    *qizixy = (*qizixy - keyxy) as u8 as usize;
+                    *qizixy = (*qizixy as isize - keyxy as isize) as u8;
                 }
             }
 
@@ -177,7 +178,7 @@ impl Manual {
                 if xy < SEATCOUNT {
                     // 用单字节坐标表示, 将字节变为十进制,
                     // 十位数为X(0-8),个位数为Y(0-9),棋盘的左下角为原点(0, 0)
-                    piece_chars[(ROWCOUNT - xy % ROWCOUNT) * COLCOUNT + xy / ROWCOUNT] = ch;
+                    piece_chars[(ROWCOUNT - 1 - xy % ROWCOUNT) * COLCOUNT + xy / ROWCOUNT] = ch;
                 }
                 index += 1;
             }
@@ -186,13 +187,15 @@ impl Manual {
             let result = ["未知", "红胜", "黑胜", "和棋"];
             let typestr = ["全局", "开局", "中局", "残局"];
             let bytes_to_string = |bytes| {
-                GBK.decode(bytes, DecoderTrap::Ignore).unwrap()
-                // .replace('\0', " ")
-                // .trim()
+                GBK.decode(bytes, DecoderTrap::Ignore)
+                    .unwrap()
+                    .replace('\0', "")
+                    .trim()
+                    .into()
             };
 
             for (key, value) in [
-                (InfoKey::FEN, format!("{fen} + r - - 0 1")), // 可能存在不是红棋先走的情况？
+                (InfoKey::FEN, format!("{fen} r - - 0 1")), // 可能存在不是红棋先走的情况？
                 (InfoKey::Version, version.to_string()),
                 (InfoKey::Win, String::from(result[headplayresult as usize])),
                 (
@@ -209,15 +212,15 @@ impl Manual {
                 (InfoKey::Writer, bytes_to_string(rmkwriter)),
                 (InfoKey::Author, bytes_to_string(author)),
             ] {
-                manual.set_infokey_value(key.to_string(), value);
+                info.insert(key.to_string(), value);
             }
 
-            manual.manual_move.set_from(
+            manual_move = manual_move::ManualMove::from_xqf(
                 &fen, &byte_vec, version, keyxyf, keyxyt, keyrmksize, &f32keys,
             );
         }
 
-        manual
+        Manual { info, manual_move }
     }
 
     fn set_infokey_value(&mut self, key: String, value: String) {
@@ -227,8 +230,9 @@ impl Manual {
     pub fn to_string(&self) -> String {
         let mut result = String::new();
         for (key, value) in &self.info {
-            result.push_str(&format!("[{key} {value}]\n"));
+            result.push_str(&format!("[{key} \"{value}\"]\n"));
         }
+        result.push('\n');
         result.push_str(&self.manual_move.to_string());
 
         result
@@ -242,7 +246,20 @@ mod tests {
     #[test]
     fn test_manual() {
         let manual = Manual::new();
+        assert_eq!("\n[(0,0)->(0,0)]\n", manual.to_string());
 
-        assert_eq!("[(0,0)->(0,0)] \n", manual.to_string());
+        let file_names = [
+            "01",
+            "4四量拨千斤",
+            "第09局",
+            "布局陷阱--飞相局对金钩炮",
+            "- 北京张强 (和) 上海胡荣华 (1993.4.27于南京)",
+        ];
+        for file_name in file_names {
+            let manual = Manual::from_xqf(&format!("tests/xqf/{file_name}.xqf"));
+            std::fs::write(format!("tests/{file_name}.txt"), manual.to_string())
+                .expect("Write Err.");
+        }
+
     }
 }
