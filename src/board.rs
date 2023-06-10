@@ -38,8 +38,7 @@ pub fn piece_chars_to_fen(piece_chars: &str) -> String {
 
     let mut result = String::new();
     let mut null_num = 0;
-    let mut index = 0;
-    for ch in piece_chars.chars() {
+    for (index, ch) in piece_chars.chars().enumerate() {
         if ch.is_ascii_alphabetic() {
             push_num_str(&mut result, &mut null_num);
             result.push(ch);
@@ -47,10 +46,9 @@ pub fn piece_chars_to_fen(piece_chars: &str) -> String {
             null_num += 1;
         }
 
-        index += 1;
-        if index % bit_constant::COLCOUNT == 0 {
+        if (index + 1) % bit_constant::COLCOUNT == 0 {
             push_num_str(&mut result, &mut null_num);
-            if index < bit_constant::SEATCOUNT {
+            if index < bit_constant::SEATCOUNT - 1 {
                 result.push(FENSPLITCHAR);
             }
         }
@@ -74,11 +72,9 @@ fn fen_to_piece_chars(fen: &str) -> String {
 
 fn piece_chars_to_pieces(piece_chars: &str) -> Pieces {
     let mut result = [piece::Piece::None; bit_constant::SEATCOUNT];
-    let mut index = 0;
-    for ch in piece_chars.chars() {
+    for (index, ch) in piece_chars.chars().enumerate() {
         result[index] = piece::Piece::new(ch);
-        index += 1;
-        if index == result.len() {
+        if index + 1 == result.len() {
             break;
         }
     }
@@ -106,13 +102,10 @@ fn pieces_to_fen(pieces: &Pieces) -> String {
 pub fn get_bottom_color(pieces: &Pieces) -> piece::Color {
     let mut bottom_color = piece::Color::Red;
     for index in bit_constant::get_kind_put_indexs(piece::Kind::King, true) {
-        match pieces[index] {
-            piece::Piece::Some(color, piece::Kind::King) => {
-                bottom_color = color;
-                break;
-            }
-            _ => (),
-        };
+        if let piece::Piece::Some(color, piece::Kind::King) = pieces[index] {
+            bottom_color = color;
+            break;
+        }
     }
 
     bottom_color
@@ -137,12 +130,10 @@ impl Board {
 
     pub fn to_string(&self) -> String {
         let mut result = String::new();
-        let mut index = 0;
-        for piece in self.pieces {
+        for (index, piece) in self.pieces.iter().enumerate() {
             result.push(piece.print_name());
 
-            index += 1;
-            if index % bit_constant::COLCOUNT == 0 {
+            if (index + 1) % bit_constant::COLCOUNT == 0 {
                 result.push('\n');
             }
         }

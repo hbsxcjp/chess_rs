@@ -195,7 +195,7 @@ macro_rules! is_same_col {
 //     coords
 // }
 
-pub const fn get_index_array(mut bit_atom: BitAtom) -> (IndexArray, usize) {
+const fn get_index_array(mut bit_atom: BitAtom) -> (IndexArray, usize) {
     let mut index_array: IndexArray = [0; SEATCOUNT];
     let mut count: usize = 0;
     while bit_atom != 0 {
@@ -210,13 +210,8 @@ pub const fn get_index_array(mut bit_atom: BitAtom) -> (IndexArray, usize) {
 }
 
 pub fn get_indexs_from_bitatom(bit_atom: BitAtom) -> Vec<usize> {
-    let mut indexs: Vec<usize> = Vec::new();
     let (index_array, count) = get_index_array(bit_atom);
-    for idx in 0..count {
-        indexs.push(index_array[idx]);
-    }
-
-    indexs
+    index_array[0..count].to_vec()
 }
 
 pub fn get_kind_put_indexs(kind: piece::Kind, is_bottom: bool) -> Vec<usize> {
@@ -804,7 +799,7 @@ pub fn get_bitatom_array_string(boards: &[BitAtom], is_rotate: bool) -> String {
         let get_rowcol_string = |board| {
             let mut result = String::new();
             for col in 0..col_count {
-                result.push(if (board & (1 << col)) == 0 { '-' } else { '1' });
+                result.push(if board & MASK[col] == 0 { '-' } else { '1' });
             }
 
             result + " "
@@ -906,30 +901,40 @@ mod tests {
         // move
         write_board_array_string("KINGMOVE", &KINGMOVE, false);
         write_board_array_string("ADVISORMOVE", &ADVISORMOVE, false);
-        for index in 0..LEGSTATECOUNT {
+        for (index, boards) in BISHOPMOVE.iter().enumerate() {
             let name = format!("BISHOPMOVE[{index}]");
-            write_board_array_string(&name, &BISHOPMOVE[index], false);
+            write_board_array_string(&name, boards, false);
+        }
 
+        for (index, boards) in KNIGHTMOVE.iter().enumerate() {
             let name = format!("KNIGHTMOVE[{index}]");
-            write_board_array_string(&name, &KNIGHTMOVE[index], false);
+            write_board_array_string(&name, boards, false);
         }
-        for index in 0..COLCOUNT {
+
+        for (index, boards) in ROOKROWMOVE.iter().enumerate() {
+            // for index in 0..COLCOUNT {
             let name = format!("ROOKROWMOVE[{index}]");
-            write_board_array_string(&name, &ROOKROWMOVE[index], false);
-
-            let name = format!("CANNONROWMOVE[{index}]");
-            write_board_array_string(&name, &CANNONROWMOVE[index], false);
+            write_board_array_string(&name, boards, false);
         }
-        for index in 0..ROWCOUNT {
+
+        for (index, boards) in ROOKCOLMOVE.iter().enumerate() {
             let name = format!("ROOKCOLMOVE[{index}]");
-            write_board_array_string(&name, &ROOKCOLMOVE[index], false);
-
-            let name = format!("CANNONCOLMOVE[{index}]");
-            write_board_array_string(&name, &CANNONCOLMOVE[index], false);
+            write_board_array_string(&name, boards, false);
         }
-        for index in 0..SIDECOUNT {
+
+        for (index, boards) in CANNONROWMOVE.iter().enumerate() {
+            let name = format!("CANNONROWMOVE[{index}]");
+            write_board_array_string(&name, boards, false);
+        }
+
+        for (index, boards) in CANNONCOLMOVE.iter().enumerate() {
+            let name = format!("CANNONCOLMOVE[{index}]");
+            write_board_array_string(&name, boards, false);
+        }
+
+        for (index, boards) in PAWNMOVE.iter().enumerate() {
             let name = format!("PAWNMOVE[{index}]");
-            write_board_array_string(&name, &PAWNMOVE[index], false);
+            write_board_array_string(&name, boards, false);
         }
     }
 }

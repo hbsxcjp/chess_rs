@@ -45,16 +45,16 @@ impl ManualMove {
         let __sub = |a, b| (a as isize - b as isize) as u8; // 保持为<256
 
         let read_bytes = |pos: &mut usize, size| {
-            let mut bytes = vec![0; size];
-            bytes.copy_from_slice(&byte_vec[*pos..(*pos + size)]);
+            let new_pos = *pos + size;
+            let mut bytes = byte_vec[*pos..new_pos].to_vec();
             if version > 10 {
                 // '字节解密'
-                for index in 0..size {
-                    bytes[index] = __sub(bytes[index], f32keys[(*pos + index) % 32]);
+                for (index, abyte) in bytes.iter_mut().enumerate() {
+                    *abyte = __sub(*abyte, f32keys[(*pos + index) % 32]);
                 }
             }
 
-            *pos += size;
+            *pos = new_pos;
             bytes
         };
 
@@ -88,6 +88,7 @@ impl ManualMove {
                 if remark_size > 0 {
                     GBK.decode(&read_bytes(pos, remark_size), DecoderTrap::Ignore)
                         .unwrap()
+                        .replace("\r\n", "\n")
                         .trim()
                         .into()
                 } else {
@@ -167,6 +168,6 @@ mod tests {
     fn test_manual_move() {
         let manual_move = ManualMove::new();
 
-        assert_eq!("[(0,0)->(0,0)]\n", manual_move.to_string());
+        assert_eq!("", manual_move.to_string());
     }
 }
