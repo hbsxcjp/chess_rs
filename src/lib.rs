@@ -1,11 +1,12 @@
+mod amove;
 mod bit_board;
 mod bit_constant;
 mod bit_effect;
 mod board;
+mod coord;
 mod manual;
 mod manual_move;
 mod piece;
-mod amove;
 
 // pub use crate::piece;
 

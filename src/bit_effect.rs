@@ -4,6 +4,8 @@
 use std::collections::HashMap;
 
 use crate::bit_constant;
+use crate::coord;
+use crate::piece;//::{self, COLORCOUNT, KINDCOUNT};
 
 #[derive(Debug)]
 pub struct Effect {
@@ -41,9 +43,8 @@ impl Effect {
     }
 
     pub fn to_string(&self) -> String {
-        let coord = bit_constant::Coord::from_index(self.to_index).unwrap();
-        let row = coord.row;
-        let col = coord.col;
+        let coord::Coord { row, col } =
+            coord::Coord::from_index(self.to_index).unwrap();
         let score = self.score;
         let fre = self.frequency;
         format!("({},{})-{score}-{fre} ", row, col)
@@ -63,9 +64,8 @@ impl MoveEffect {
     }
 
     pub fn to_string(&self) -> String {
-        let coord = bit_constant::Coord::from_index(self.from_index).unwrap();
-        let row = coord.row;
-        let col = coord.col;
+        let coord::Coord { row, col } =
+            coord::Coord::from_index(self.from_index).unwrap();
         let mut result = format!("[{},{}] => ", row, col);
         for effect in self.effects.iter() {
             result.push_str(&effect.to_string());
@@ -100,27 +100,15 @@ impl HashlockMoveEffect {
 
 impl HistoryMoveEffect {
     pub fn get_move_effect(&self, mut hashkey: u64, hashlock: u64) -> Option<&Vec<MoveEffect>> {
-        let mut index = 0;
-        while self.history.contains_key(&hashkey) {
-            let option_hashlock_move_effect = self.history.get(&hashkey);
-            match option_hashlock_move_effect {
-                None => return None,
-                Some(hashlock_move_effect) => {
-                    if hashlock_move_effect.hashlock == hashlock {
-                        return Some(&hashlock_move_effect.move_effects);
-                    }
+        for index in 0..piece::COLORCOUNT {
+            if let Some(hashlock_move_effect) = self.history.get(&hashkey) {
+                if hashlock_move_effect.hashlock == hashlock {
+                    return Some(&hashlock_move_effect.move_effects);
                 }
-            };
-
-            if index == bit_constant::COLORCOUNT {
-                assert!(false, "重复碰撞最多允许2次!");
-                return None;
             }
 
             hashkey ^= bit_constant::COLLIDEZOBRISTKEY[index];
             assert!(false, "hashlock is not same! index:{index}\n");
-
-            index += 1;
         }
 
         None

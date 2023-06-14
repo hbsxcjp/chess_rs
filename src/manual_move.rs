@@ -1,12 +1,14 @@
 #![allow(dead_code)]
 
-use crate::amove;
-use crate::bit_constant::CoordPair;
+use crate::coord::CoordPair;
+use crate::{amove, coord};
 use encoding::all::GBK;
 use encoding::{DecoderTrap, Encoding};
+use std::collections::VecDeque;
 // use crate::bit_constant;
 // use std::borrow::Borrow;
 use crate::board;
+// use crate::manual;
 // use std::cell::RefCell;
 use std::rc::Rc;
 // use std::rc::Weak;
@@ -16,16 +18,16 @@ pub struct ManualMove {
     pub board: board::Board,
 
     pub root_move: Rc<amove::Move>,
-    pub current_move: Rc<amove::Move>,
+    // pub current_move: Rc<amove::Move>,
 }
 
 impl ManualMove {
     fn from(fen: &str, root_move: Rc<amove::Move>) -> Self {
-        let current_move = root_move.clone();
+        // let current_move = root_move.clone();
         ManualMove {
             board: board::Board::new(fen),
             root_move,
-            current_move,
+            // current_move,
         }
     }
 
@@ -155,8 +157,35 @@ impl ManualMove {
         //         => !GetBoardWith(move.Before).BitBoard.CanMove(move.CoordPair)));
     }
 
-    pub fn to_string(&self) -> String {
-        self.root_move.to_string()
+    fn get_all_after_move(&self) -> Vec<Rc<amove::Move>> {
+        fn enqueue_after(move_deque: &mut VecDeque<Rc<amove::Move>>, amove: &Rc<amove::Move>) {
+            for after_move in amove.after.borrow().iter() {
+                move_deque.push_back(after_move.clone());
+            }
+        }
+
+        let mut all_after_move: Vec<Rc<amove::Move>> = Vec::new();
+        let mut move_deque: VecDeque<Rc<amove::Move>> = VecDeque::new();
+        enqueue_after(&mut move_deque, &self.root_move);
+        let mut id = 0;
+        while let Some(amove) = move_deque.pop_front() {
+            id += 1;
+            *amove.id.borrow_mut() = id;
+
+            enqueue_after(&mut move_deque, &amove);
+            all_after_move.push(amove);
+        }
+
+        all_after_move
+    }
+
+    pub fn to_string(&self, record_type: coord::RecordType) -> String {
+        let mut reslut = self.root_move.to_string(record_type);
+        for amove in self.get_all_after_move() {
+            reslut.push_str(&amove.to_string(record_type));
+        }
+
+        reslut
     }
 }
 
@@ -168,6 +197,6 @@ mod tests {
     fn test_manual_move() {
         let manual_move = ManualMove::new();
 
-        assert_eq!("", manual_move.to_string());
+        assert_eq!("", manual_move.to_string(coord::RecordType::Txt));
     }
 }

@@ -1,37 +1,17 @@
 #![allow(dead_code)]
 
-use crate::piece;
+use crate::coord::{
+    self, COLCOUNT, COLSTATECOUNT, LEGSTATECOUNT, ROWCOUNT, ROWSTATECOUNT, SEATCOUNT, SIDECOUNT,
+};
+use crate::piece::{self, COLORCOUNT, KINDCOUNT};
 // use rand::Rng;
-
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub struct Coord {
-    pub row: usize,
-    pub col: usize,
-}
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub struct CoordPair {
-    pub from_coord: Coord,
-    pub to_coord: Coord,
-}
-
-pub const COLORCOUNT: usize = 2;
-pub const KINDCOUNT: usize = 7;
-
-pub const ROWCOUNT: usize = 10;
-pub const COLCOUNT: usize = 9;
-pub const SEATCOUNT: usize = ROWCOUNT * COLCOUNT;
-
-pub const SIDECOUNT: usize = 2;
-pub const LEGSTATECOUNT: usize = 1 << 4;
-pub const COLSTATECOUNT: usize = 1 << ROWCOUNT;
-pub const ROWSTATECOUNT: usize = 1 << COLCOUNT;
 
 pub type ZobristSeatArray = [[[u64; SEATCOUNT]; KINDCOUNT]; COLORCOUNT];
 pub type ZobristSideArray = [u64; COLORCOUNT];
 
 pub type BitAtom = u128;
 pub type IndexArray = [usize; SEATCOUNT];
-pub type CoordArray = [Coord; SEATCOUNT];
+pub type CoordArray = [coord::Coord; SEATCOUNT];
 pub type SideBoardArray = [BitAtom; SIDECOUNT];
 pub type SeatBoardArray = [BitAtom; SEATCOUNT];
 pub type LegStateSeatBoardArray = [[BitAtom; SEATCOUNT]; LEGSTATECOUNT];
@@ -92,73 +72,6 @@ macro_rules! to_rowcol {
 //     };
 // }
 
-impl Coord {
-    pub fn new() -> Self {
-        Coord { row: 0, col: 0 }
-    }
-
-    pub fn from_index(index: usize) -> Option<Self> {
-        if index < SEATCOUNT {
-            Some(Coord {
-                row: index / COLCOUNT,
-                col: index % COLCOUNT,
-            })
-        } else {
-            None
-        }
-    }
-
-    pub fn from_rowcol(row: usize, col: usize) -> Option<Self> {
-        if row < ROWCOUNT && col < COLCOUNT {
-            Some(Coord { row, col })
-        } else {
-            None
-        }
-    }
-
-    pub fn index(&self) -> usize {
-        self.row * COLCOUNT + self.col
-    }
-
-    pub fn to_string(&self) -> String {
-        format!("({},{})", self.row, self.col)
-    }
-}
-
-impl CoordPair {
-    pub fn new() -> Self {
-        CoordPair {
-            from_coord: Coord::new(),
-            to_coord: Coord::new(),
-        }
-    }
-
-    pub fn from_coord(from_coord: Coord, to_coord: Coord) -> Self {
-        CoordPair {
-            from_coord,
-            to_coord,
-        }
-    }
-
-    pub fn from_rowcol(frow: usize, fcol: usize, trow: usize, tcol: usize) -> Option<Self> {
-        if let Some(from_coord) = Coord::from_rowcol(frow, fcol) {
-            if let Some(to_coord) = Coord::from_rowcol(trow, tcol) {
-                return Some(CoordPair::from_coord(from_coord, to_coord));
-            }
-        }
-
-        None
-    }
-
-    pub fn to_string(&self) -> String {
-        format!(
-            "[{}->{}]",
-            self.from_coord.to_string(),
-            self.to_coord.to_string()
-        )
-    }
-}
-
 #[macro_export]
 macro_rules! is_same_col {
     ($the_index:expr,  $other_index:expr) => {
@@ -181,10 +94,10 @@ macro_rules! is_same_col {
 // }
 
 // const fn create_coord_array() -> CoordArray {
-//     let mut coords = [Coord { row: 0, col: 0 }; SEATCOUNT];
+//     let mut coords = [coord::Coord { row: 0, col: 0 }; SEATCOUNT];
 //     let mut index = 0;
 //     while index < coords.len() {
-//         coords[index] = Coord {
+//         coords[index] = coord::Coord {
 //             row: index / COLCOUNT,
 //             col: index % COLCOUNT,
 //         };

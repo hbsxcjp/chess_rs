@@ -1,7 +1,10 @@
 #![allow(dead_code)]
 
+// use crate::bit_constant;
 use num_enum::TryFromPrimitive;
-use crate::bit_constant;
+
+pub const COLORCOUNT: usize = 2;
+pub const KINDCOUNT: usize = 7;
 
 #[derive(Clone, Copy, Debug, TryFromPrimitive, PartialEq)]
 #[repr(usize)]
@@ -32,6 +35,11 @@ pub enum Piece {
 
 const NULLCHAR: char = '_';
 
+const CHCHARS: [[char; KINDCOUNT]; COLORCOUNT] = [
+    ['K', 'A', 'B', 'N', 'R', 'C', 'P'],
+    ['k', 'a', 'b', 'n', 'r', 'c', 'p'],
+];
+
 const KINGCHAR: char = 'k';
 const ADVISORCHAR: char = 'a';
 const BISHOPCHAR: char = 'b';
@@ -58,8 +66,8 @@ const BLACKROOKNAME: char = '車';
 const BLACKCANNONNAME: char = '砲';
 const BLACKPAWNNAME: char = '卒';
 
-pub const COLORARRAY: [Color; bit_constant::COLORCOUNT] = [Color::Red, Color::Black];
-pub const KINDARRAY: [Kind; bit_constant::KINDCOUNT] = [
+pub const COLORARRAY: [Color; COLORCOUNT] = [Color::Red, Color::Black];
+pub const KINDARRAY: [Kind; KINDCOUNT] = [
     Kind::King,
     Kind::Advisor,
     Kind::Bishop,
@@ -68,16 +76,6 @@ pub const KINDARRAY: [Kind; bit_constant::KINDCOUNT] = [
     Kind::Cannon,
     Kind::Pawn,
 ];
-
-pub fn is_line_move(kind: &Kind) -> bool {
-    match kind {
-        Kind::King => true,
-        Kind::Rook => true,
-        Kind::Cannon => true,
-        Kind::Pawn => true,
-        _ => false,
-    }
-}
 
 pub fn other_color(color: Color) -> Color {
     match color {
@@ -88,21 +86,35 @@ pub fn other_color(color: Color) -> Color {
 }
 
 fn color(ch: char) -> Color {
-    match ch.is_ascii_uppercase() {
-        true => Color::Red,
-        false => Color::Black,
+    if ch.is_ascii_uppercase() {
+        Color::Red
+    } else {
+        Color::Black
     }
 }
 
 fn kind(ch: char) -> Kind {
-    match ch.to_ascii_lowercase() {
-        KINGCHAR => Kind::King,
-        ADVISORCHAR => Kind::Advisor,
-        BISHOPCHAR => Kind::Bishop,
-        KNIGHTCHAR => Kind::Knight,
-        ROOKCHAR => Kind::Rook,
-        CANNONCHAR => Kind::Cannon,
-        _ => Kind::Pawn,
+    for (index, ach) in CHCHARS[color(ch) as usize].iter().enumerate() {
+        if ch == *ach {
+            return Kind::try_from_primitive(index).unwrap_or(Kind::NoKind);
+        }
+    }
+
+    Kind::NoKind
+}
+
+pub fn is_line_move(kind: &Kind) -> bool {
+    match kind {
+        Kind::King | Kind::Rook | Kind::Cannon | Kind::Pawn => true,
+        _ => false,
+    }
+}
+
+pub fn other_ch(ch: char) -> char {
+    if ch.is_ascii_lowercase() {
+        ch.to_ascii_uppercase()
+    } else {
+        ch.to_ascii_lowercase()
     }
 }
 
@@ -118,17 +130,19 @@ pub fn get_ch(color: &Color, kind: &Kind) -> char {
         Kind::NoKind => NULLCHAR,
     };
 
-    match color {
-        Color::Red => ch.to_ascii_uppercase(),
-        _ => ch,
+    if *color == Color::Red {
+        ch.to_ascii_uppercase()
+    } else {
+        ch
     }
 }
 
 impl Piece {
     pub fn new(ch: char) -> Piece {
-        match ch != NULLCHAR {
-            true => Piece::Some(color(ch), kind(ch)),
-            false => Piece::None,
+        if ch != NULLCHAR {
+            Piece::Some(color(ch), kind(ch))
+        } else {
+            Piece::None
         }
     }
 

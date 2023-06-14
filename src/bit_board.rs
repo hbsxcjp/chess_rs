@@ -2,10 +2,12 @@
 #![allow(unused_imports)]
 
 use crate::bit_constant;
-use crate::bit_constant::COLCOUNT;
 use crate::bit_effect;
 use crate::board;
-use crate::piece;
+use crate::coord::{
+    self, COLCOUNT, COLSTATECOUNT, LEGSTATECOUNT, ROWCOUNT, ROWSTATECOUNT, SEATCOUNT, SIDECOUNT,
+};
+use crate::piece::{self, COLORCOUNT, KINDCOUNT};
 
 type SetEffect =
     fn(&BitBoard, move_effect: &mut bit_effect::MoveEffect, to_index: usize, eat_kind: piece::Kind);
@@ -13,12 +15,12 @@ type SetEffect =
 #[derive(Debug)]
 pub struct BitBoard {
     bottom_color: piece::Color,
-    colors: [piece::Color; bit_constant::SEATCOUNT],
-    kinds: [piece::Kind; bit_constant::SEATCOUNT],
+    colors: [piece::Color; SEATCOUNT],
+    kinds: [piece::Kind; SEATCOUNT],
 
     // 计算中间存储数据(基本局面改动时更新)
-    color_kind_pieces: [[bit_constant::BitAtom; bit_constant::KINDCOUNT]; bit_constant::COLORCOUNT],
-    color_pieces: [bit_constant::BitAtom; bit_constant::COLORCOUNT],
+    color_kind_pieces: [[bit_constant::BitAtom; KINDCOUNT]; COLORCOUNT],
+    color_pieces: [bit_constant::BitAtom; COLORCOUNT],
     all_pieces: bit_constant::BitAtom,
     rotate_all_pieces: bit_constant::BitAtom,
 
@@ -31,12 +33,12 @@ pub struct BitBoard {
 impl BitBoard {
     pub fn new(pieces: &board::Pieces) -> BitBoard {
         let mut bit_board: BitBoard = BitBoard {
-            bottom_color: board::get_bottom_color(&pieces),
-            colors: [piece::Color::NoColor; bit_constant::SEATCOUNT],
-            kinds: [piece::Kind::NoKind; bit_constant::SEATCOUNT],
+            bottom_color: board::get_bottom_color(pieces),
+            colors: [piece::Color::NoColor; SEATCOUNT],
+            kinds: [piece::Kind::NoKind; SEATCOUNT],
 
-            color_kind_pieces: [[0; bit_constant::KINDCOUNT]; bit_constant::COLORCOUNT],
-            color_pieces: [0; bit_constant::COLORCOUNT],
+            color_kind_pieces: [[0; KINDCOUNT]; COLORCOUNT],
+            color_pieces: [0; COLORCOUNT],
             all_pieces: 0,
             rotate_all_pieces: 0,
 
@@ -45,22 +47,19 @@ impl BitBoard {
         };
 
         for (index, piece) in pieces.iter().enumerate() {
-            match piece {
-                piece::Piece::None => (),
-                piece::Piece::Some(color, kind) => {
-                    let color_i = *color as usize;
-                    let kind_i = *kind as usize;
-                    bit_board.colors[index] = *color;
-                    bit_board.kinds[index] = *kind;
+            if let piece::Piece::Some(color, kind) = piece {
+                let color_i = *color as usize;
+                let kind_i = *kind as usize;
+                bit_board.colors[index] = *color;
+                bit_board.kinds[index] = *kind;
 
-                    bit_board.color_kind_pieces[color_i][kind_i] |= bit_constant::MASK[index];
-                    bit_board.color_pieces[color_i] |= bit_constant::MASK[index];
-                    bit_board.all_pieces |= bit_constant::MASK[index];
-                    bit_board.rotate_all_pieces |= bit_constant::ROTATEMASK[index];
+                bit_board.color_kind_pieces[color_i][kind_i] |= bit_constant::MASK[index];
+                bit_board.color_pieces[color_i] |= bit_constant::MASK[index];
+                bit_board.all_pieces |= bit_constant::MASK[index];
+                bit_board.rotate_all_pieces |= bit_constant::ROTATEMASK[index];
 
-                    bit_board.hashkey ^= bit_constant::ZOBRISTKEY[color_i][kind_i][index];
-                    bit_board.hashlock ^= bit_constant::ZOBRISTLOCK[color_i][kind_i][index];
-                }
+                bit_board.hashkey ^= bit_constant::ZOBRISTKEY[color_i][kind_i][index];
+                bit_board.hashlock ^= bit_constant::ZOBRISTLOCK[color_i][kind_i][index];
             }
         }
 
@@ -134,12 +133,12 @@ impl BitBoard {
                 return false;
             }
 
-            let mut index = top_king_index + bit_constant::COLCOUNT;
+            let mut index = top_king_index + COLCOUNT;
             while index < bottom_king_index {
                 if self.all_pieces & bit_constant::MASK[index] != 0 {
                     return false;
                 }
-                index += bit_constant::COLCOUNT;
+                index += COLCOUNT;
             }
 
             true
