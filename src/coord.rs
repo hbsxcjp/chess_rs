@@ -100,7 +100,7 @@ impl Coord {
         }
     }
 
-    pub fn get_record_col(col: usize, color_is_bottom: bool) -> usize {
+    pub fn get_side_col(col: usize, color_is_bottom: bool) -> usize {
         if color_is_bottom {
             Coord::symmetry_col(col)
         } else {
@@ -158,7 +158,7 @@ impl CoordPair {
 
     pub fn to_string(&self, record_type: RecordType) -> String {
         format!(
-            "[{}->{}]",
+            "{}{}",
             self.from_coord.to_string(record_type),
             self.to_coord.to_string(record_type)
         )

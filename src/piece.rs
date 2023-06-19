@@ -3,15 +3,11 @@
 // use crate::bit_constant;
 use num_enum::TryFromPrimitive;
 
-pub const COLORCOUNT: usize = 2;
-pub const KINDCOUNT: usize = 7;
-
 #[derive(Clone, Copy, Debug, TryFromPrimitive, PartialEq)]
 #[repr(usize)]
 pub enum Color {
     Red,
     Black,
-    NoColor,
 }
 
 #[derive(Clone, Copy, Debug, TryFromPrimitive, PartialEq)]
@@ -33,38 +29,25 @@ pub enum Piece {
     Some(Color, Kind),
 }
 
+pub const COLORCOUNT: usize = 2;
+pub const KINDCOUNT: usize = 7;
+
 const NULLCHAR: char = '_';
+
+const NULLNAME: char = '－';
 
 const CHCHARS: [[char; KINDCOUNT]; COLORCOUNT] = [
     ['K', 'A', 'B', 'N', 'R', 'C', 'P'],
     ['k', 'a', 'b', 'n', 'r', 'c', 'p'],
 ];
 
-const KINGCHAR: char = 'k';
-const ADVISORCHAR: char = 'a';
-const BISHOPCHAR: char = 'b';
-const KNIGHTCHAR: char = 'n';
-const ROOKCHAR: char = 'r';
-const CANNONCHAR: char = 'c';
-const PAWNCHAR: char = 'p';
-
-const NULLNAME: char = '－';
-
-const REDKINGNAME: char = '帅';
-const REDADVISORNAME: char = '仕';
-const REDBISHOPNAME: char = '相';
-const KNIGHTNAME: char = '马';
-const ROOKNAME: char = '车';
-const CANNONNAME: char = '炮';
-const REDPAWNNAME: char = '兵';
-
-const BLACKKINGNAME: char = '将';
-const BLACKADVISORNAME: char = '士';
-const BLACKBISHOPNAME: char = '象';
+pub const NAMECHARS: [[char; KINDCOUNT]; COLORCOUNT] = [
+    ['帅', '仕', '相', '马', '车', '炮', '兵'],
+    ['将', '士', '象', '马', '车', '炮', '卒'],
+];
 const BLACKKNIGHTNAME: char = '馬';
 const BLACKROOKNAME: char = '車';
 const BLACKCANNONNAME: char = '砲';
-const BLACKPAWNNAME: char = '卒';
 
 pub const COLORARRAY: [Color; COLORCOUNT] = [Color::Red, Color::Black];
 pub const KINDARRAY: [Kind; KINDCOUNT] = [
@@ -81,7 +64,6 @@ pub fn other_color(color: Color) -> Color {
     match color {
         Color::Red => Color::Black,
         Color::Black => Color::Red,
-        Color::NoColor => Color::NoColor,
     }
 }
 
@@ -93,7 +75,7 @@ fn color(ch: char) -> Color {
     }
 }
 
-fn kind(ch: char) -> Kind {
+pub fn kind(ch: char) -> Kind {
     for (index, ach) in CHCHARS[color(ch) as usize].iter().enumerate() {
         if ch == *ach {
             return Kind::try_from_primitive(index).unwrap_or(Kind::NoKind);
@@ -103,7 +85,25 @@ fn kind(ch: char) -> Kind {
     Kind::NoKind
 }
 
-pub fn is_line_move(kind: &Kind) -> bool {
+pub fn color_from_name(name: char) -> Color {
+    if NAMECHARS[Color::Red as usize].contains(&name) {
+        Color::Red
+    } else {
+        Color::Black
+    }
+}
+
+pub fn kind_from_name(name: char) -> Kind {
+    for (index, aname) in NAMECHARS[color_from_name(name) as usize].iter().enumerate() {
+        if name == *aname {
+            return Kind::try_from_primitive(index).unwrap_or(Kind::NoKind);
+        }
+    }
+
+    Kind::NoKind
+}
+
+pub fn is_line_move(kind: Kind) -> bool {
     match kind {
         Kind::King | Kind::Rook | Kind::Cannon | Kind::Pawn => true,
         _ => false,
@@ -118,22 +118,10 @@ pub fn other_ch(ch: char) -> char {
     }
 }
 
-pub fn get_ch(color: &Color, kind: &Kind) -> char {
-    let ch = match kind {
-        Kind::King => KINGCHAR,
-        Kind::Advisor => ADVISORCHAR,
-        Kind::Bishop => BISHOPCHAR,
-        Kind::Knight => KNIGHTCHAR,
-        Kind::Rook => ROOKCHAR,
-        Kind::Cannon => CANNONCHAR,
-        Kind::Pawn => PAWNCHAR,
+pub fn get_ch(color: Color, kind: Kind) -> char {
+    match kind {
         Kind::NoKind => NULLCHAR,
-    };
-
-    if *color == Color::Red {
-        ch.to_ascii_uppercase()
-    } else {
-        ch
+        _ => CHCHARS[color as usize][kind as usize],
     }
 }
 
@@ -149,35 +137,14 @@ impl Piece {
     pub fn ch(&self) -> char {
         match self {
             Self::None => NULLCHAR,
-            Self::Some(color, kind) => get_ch(color, kind),
+            Self::Some(color, kind) => get_ch(*color, *kind),
         }
     }
 
     pub fn name(&self) -> char {
         match self {
             Self::None => NULLNAME,
-            Self::Some(color, kind) => match kind {
-                Kind::King => match color {
-                    Color::Red => REDKINGNAME,
-                    _ => BLACKKINGNAME,
-                },
-                Kind::Advisor => match color {
-                    Color::Red => REDADVISORNAME,
-                    _ => BLACKADVISORNAME,
-                },
-                Kind::Bishop => match color {
-                    Color::Red => REDBISHOPNAME,
-                    _ => BLACKBISHOPNAME,
-                },
-                Kind::Knight => KNIGHTNAME,
-                Kind::Rook => ROOKNAME,
-                Kind::Cannon => CANNONNAME,
-                Kind::Pawn => match color {
-                    Color::Red => REDPAWNNAME,
-                    _ => BLACKPAWNNAME,
-                },
-                Kind::NoKind => NULLNAME,
-            },
+            Self::Some(color, kind) => NAMECHARS[*color as usize][*kind as usize],
         }
     }
 

@@ -12,8 +12,17 @@ use std::collections::HashMap;
 // use std::cell::RefCell;
 use std::rc::Rc;
 // use std::rc::Weak;
+use num_enum::TryFromPrimitive;
 
 pub type Pieces = [piece::Piece; coord::SEATCOUNT];
+
+#[derive(TryFromPrimitive, PartialEq)]
+#[repr(usize)]
+pub enum MoveDir {
+    Back,
+    Parallel,
+    Forward,
+}
 
 #[derive(Debug)]
 pub struct Board {
@@ -114,7 +123,7 @@ pub fn fen_to_change(fen: &str, ct: ChangeType) -> String {
         line_vec
     };
 
-    let rev_line_vec_string = |line_vec: Vec<&str>| {
+    fn rev_line_vec_string(line_vec: Vec<&str>) -> Vec<String> {
         let mut new_line_vec = Vec::new();
         for line in line_vec {
             let mut new_line = String::new();
@@ -125,7 +134,7 @@ pub fn fen_to_change(fen: &str, ct: ChangeType) -> String {
         }
 
         new_line_vec
-    };
+    }
 
     match ct {
         ChangeType::Exchange => {
@@ -200,47 +209,158 @@ impl Board {
         }
     }
 
-    pub fn get_zhstr_from_coordpair(&self, coordpair: CoordPair) -> String {
-        let result = String::new();
+    pub fn get_zhstr_from_coordpair(&self, coordpair: &CoordPair) -> String {
+        let mut result = String::new();
+        let from_coord = coordpair.from_coord;
+        let piece = &self.pieces[from_coord.index()];
+        if let piece::Piece::Some(color, kind) = *piece {
+            let to_coord = coordpair.to_coord;
+            let from_row = from_coord.row;
+            let from_col = from_coord.col;
+            let to_row = to_coord.row;
+            let to_col = to_coord.col;
+            let row_is_same = from_row == to_row;
+            let color_is_bottom = color == get_bottom_color(&self.pieces);
+            let mut live_coords = self.get_coords_from_color_kind_col(color, kind, from_col);
+
+            result.push(piece.name());
+            if live_coords.len() > 1 && kind as usize > piece::Kind::Bishop as usize {
+                // 该列有多兵时，需检查多列多兵的情况
+                if kind == piece::Kind::Pawn {
+                    live_coords = self.get_coords_from_color_multi_pawn(color);
+                }
+
+                Self::sort_coords(&mut live_coords, color_is_bottom);
+                let pre_chars = Self::get_pre_chars(live_coords.len());
+                let index = live_coords
+                    .iter()
+                    .position(|&coord| coord.row == from_row && coord.col == from_col)
+                    .unwrap();
+                result.insert(0, pre_chars[index]);
+            } else {
+                //将帅, 仕(士),相(象): 不用“前”和“后”区别，因为能退的一定在前，能进的一定在后
+                let side_col = Coord::get_side_col(from_col, color_is_bottom);
+                result.push(Self::get_col_ch(color, side_col));
+            }
+
+            result.push(Self::get_move_ch(
+                row_is_same,
+                color_is_bottom == (to_row < from_row),
+            ));
+            let num_or_col = if !row_is_same && piece::is_line_move(kind) {
+                ((from_row as isize - to_row as isize).abs() - 1) as usize
+            } else {
+                Coord::get_side_col(to_col, color_is_bottom)
+            };
+            result.push(Self::get_col_ch(color, num_or_col));
+        }
+        assert_eq!(self.get_coordpair_from_zhstr(&result), coordpair.clone());
 
         result
     }
 
-    pub fn get_coordpair_from_zhstr(&self, zhstr: String) -> CoordPair {
-        let result = CoordPair::new();
+    pub fn get_coordpair_from_zhstr(&self, zhstr: &str) -> CoordPair {
+        let zh_chs: Vec<char> = zhstr.chars().collect();
+        assert_eq!(zh_chs.len(), 4);
 
-        result
+        let color = Self::get_color(zh_chs[3]);
+        let color_is_bottom = color == get_bottom_color(&self.pieces);
+        let mut index = 0;
+        let move_dir = Self::get_move_dir(zh_chs[2]);
+        let abs_row_sub = (move_dir == MoveDir::Forward) == color_is_bottom;
+
+        let mut live_coords: Vec<Coord>;
+        let mut kind = piece::kind_from_name(zh_chs[0]);
+        if kind != piece::Kind::NoKind {
+            let from_col = Coord::get_side_col(Self::get_col(color, zh_chs[1]), color_is_bottom);
+            live_coords = self.get_coords_from_color_kind_col(color, kind, from_col);
+            assert!(live_coords.len() > 0);
+
+            // 士、象同列时不分前后，以进、退区分棋子位置
+            if live_coords.len() == 2 && move_dir == MoveDir::Forward {
+                index = 1;
+            }
+        } else {
+            kind = piece::kind_from_name(zh_chs[1]);
+            live_coords = if kind == piece::Kind::Pawn {
+                self.get_coords_from_color_multi_pawn(color)
+            } else {
+                self.get_coords_from_color_kind(color, kind)
+            };
+            assert!(live_coords.len() > 1);
+
+            let pre_chars = Self::get_pre_chars(live_coords.len());
+            index = pre_chars.iter().position(|&ch| ch == zh_chs[0]).unwrap();
+        }
+        assert!(live_coords.len() > index);
+
+        Self::sort_coords(&mut live_coords, color_is_bottom);
+        let from_coord = live_coords[index];
+        let mut to_row = from_coord.row;
+        let col = Self::get_col(color, zh_chs[3]);
+        let mut to_col = Coord::get_side_col(col, color_is_bottom);
+        if piece::is_line_move(kind) {
+            if move_dir != MoveDir::Parallel {
+                to_col = from_coord.col;
+                if abs_row_sub {
+                    to_row -= col + 1;
+                } else {
+                    to_row += col + 1;
+                }
+            }
+        } else {
+            // 斜线走子：仕、相、马
+            let col_away = (to_col as isize - from_coord.col as isize).abs() as usize;
+            //  相距1或2列
+            let row_inc = if kind == piece::Kind::Advisor || kind == piece::Kind::Bishop {
+                col_away
+            } else {
+                if col_away == 1 {
+                    2
+                } else {
+                    1
+                }
+            };
+
+            if abs_row_sub {
+                to_row -= row_inc;
+            } else {
+                to_row += row_inc;
+            }
+        }
+
+        let to_coord = Coord::from_rowcol(to_row, to_col).unwrap();
+        CoordPair::from_coord(from_coord, to_coord)
     }
 
-    fn get_rows_from_color_kind(&self, color: piece::Color, kind: piece::Kind) -> Vec<Coord> {
+    fn get_coords_from_color_kind(&self, color: piece::Color, kind: piece::Kind) -> Vec<Coord> {
         let mut result = Vec::new();
         for (index, piece) in self.pieces.iter().enumerate() {
-            match piece {
-                piece::Piece::Some(acolor, akind) if *acolor == color && *akind == kind => {
+            if let piece::Piece::Some(acolor, akind) = *piece {
+                if acolor == color && akind == kind {
                     result.push(Coord::from_index(index).unwrap());
                 }
-                _ => (),
             }
         }
 
         result
     }
 
-    fn get_rows_from_color_kind_col(
+    fn get_coords_from_color_kind_col(
         &self,
         color: piece::Color,
         kind: piece::Kind,
         col: usize,
     ) -> Vec<Coord> {
-        let mut result = self.get_rows_from_color_kind(color, kind);
+        let mut result = self.get_coords_from_color_kind(color, kind);
         result.retain(|&coord| coord.col == col);
 
         result
     }
 
-    fn get_rows_from_color_multi_pawn(&self, color: piece::Color) -> Vec<Coord> {
+    fn get_coords_from_color_multi_pawn(&self, color: piece::Color) -> Vec<Coord> {
         let mut coord_map: HashMap<usize, Vec<Coord>> = HashMap::new();
-        for coord in self.get_rows_from_color_kind(color, piece::Kind::Pawn) {
+        for coord in self.get_coords_from_color_kind(color, piece::Kind::Pawn) {
             let col = coord.col;
             if coord_map.contains_key(&col) {
                 coord_map.get_mut(&col).unwrap().push(coord);
@@ -259,34 +379,33 @@ impl Board {
         result
     }
 
-    fn sort_coordss(coords: &mut Vec<Coord>, color_is_bottom: bool) {
+    fn sort_coords(coords: &mut Vec<Coord>, color_is_bottom: bool) {
         coords.sort_by(|acoord, bcoord| {
             let mut comp = acoord.col.cmp(&bcoord.col);
             if comp == Ordering::Equal {
-                comp = acoord.col.cmp(&bcoord.col);
+                comp = acoord.row.cmp(&bcoord.row).reverse();
             }
 
             if color_is_bottom {
-                if comp == Ordering::Less {
-                    Ordering::Greater
-                } else {
-                    Ordering::Less
-                }
+                comp.reverse()
             } else {
                 comp
             }
         });
     }
 
-    fn get_col_char(color: piece::Color, col: usize) -> char {
+    fn get_col_ch(color: piece::Color, col: usize) -> char {
         NUMCHARS[color as usize][col]
     }
 
     fn get_col(color: piece::Color, col_char: char) -> usize {
-        NUMCHARS[color as usize].binary_search(&col_char).unwrap()
+        NUMCHARS[color as usize]
+            .iter()
+            .position(|&ch| ch == col_char)
+            .unwrap()
     }
 
-    fn get_num_from_ch(num_ch: char) -> piece::Color {
+    fn get_color(num_ch: char) -> piece::Color {
         if NUMCHARS[piece::Color::Red as usize].contains(&num_ch) {
             piece::Color::Red
         } else {
@@ -302,8 +421,8 @@ impl Board {
         }
     }
 
-    fn get_move_ch(is_same_row: bool, is_go: bool) -> char {
-        MOVECHARS[if is_same_row {
+    fn get_move_ch(row_is_same: bool, is_go: bool) -> char {
+        MOVECHARS[if row_is_same {
             1
         } else {
             if is_go {
@@ -314,15 +433,42 @@ impl Board {
         }]
     }
 
-    fn get_move_dir(move_ch: char) -> isize {
-        MOVECHARS.binary_search(&move_ch).unwrap() as isize - 1
+    fn get_move_dir(move_ch: char) -> MoveDir {
+        MoveDir::try_from_primitive(MOVECHARS.iter().position(|&ch| ch == move_ch).unwrap())
+            .unwrap()
     }
 
-    // fn get_pgnzh_char_pattern(color: piece::Color) -> String {
-    //     format!("[{}{}{}]{{2}}[{}][{}]",
-    //     piece::NA
-    //      NUMCHARS)
-    // }
+    pub fn get_pgnzh_pattern() -> String {
+        format!(
+            "{}|{}",
+            Self::get_pgnzh_pattern_color(piece::Color::Red),
+            Self::get_pgnzh_pattern_color(piece::Color::Black)
+        )
+    }
+
+    pub fn get_pgnzh_pattern_color(color: piece::Color) -> String {
+        let mut name_chars = String::new();
+        for ch in piece::NAMECHARS[color as usize] {
+            name_chars.push(ch);
+        }
+        let mut num_chars = String::new();
+        for ch in NUMCHARS[color as usize] {
+            num_chars.push(ch);
+        }
+        let mut pos_chars = String::new();
+        for ch in POSCHARS {
+            pos_chars.push(ch);
+        }
+        let mut move_chars = String::new();
+        for ch in MOVECHARS {
+            move_chars.push(ch);
+        }
+
+        format!(
+            "[{}{}{}]{{2}}[{}][{}]",
+            name_chars, num_chars, pos_chars, move_chars, num_chars
+        )
+    }
 
     pub fn to_string(&self) -> String {
         let mut result = String::new();

@@ -157,14 +157,14 @@ impl ManualMove {
         //         => !GetBoardWith(move.Before).BitBoard.CanMove(move.CoordPair)));
     }
 
-    fn get_all_after_move(&self) -> Vec<Rc<amove::Move>> {
+    fn get_all_after_moves(&self) -> Vec<Rc<amove::Move>> {
         fn enqueue_after(move_deque: &mut VecDeque<Rc<amove::Move>>, amove: &Rc<amove::Move>) {
             for after_move in amove.after.borrow().iter() {
                 move_deque.push_back(after_move.clone());
             }
         }
 
-        let mut all_after_move: Vec<Rc<amove::Move>> = Vec::new();
+        let mut all_after_moves: Vec<Rc<amove::Move>> = Vec::new();
         let mut move_deque: VecDeque<Rc<amove::Move>> = VecDeque::new();
         enqueue_after(&mut move_deque, &self.root_move);
         let mut id = 0;
@@ -173,16 +173,25 @@ impl ManualMove {
             *amove.id.borrow_mut() = id;
 
             enqueue_after(&mut move_deque, &amove);
-            all_after_move.push(amove);
+            all_after_moves.push(amove);
         }
 
-        all_after_move
+        all_after_moves
     }
 
     pub fn to_string(&self, record_type: coord::RecordType) -> String {
         let mut reslut = self.root_move.to_string(record_type);
-        for amove in self.get_all_after_move() {
-            reslut.push_str(&amove.to_string(record_type));
+        for amove in self.get_all_after_moves() {
+            match record_type {
+                coord::RecordType::Xqf => (),
+                coord::RecordType::PgnZh => {
+                    let board = self.board.to_move(&amove.before.upgrade().unwrap());
+                    reslut.push_str(&amove.to_string_pgnzh(board));
+                }
+                _ => {
+                    reslut.push_str(&amove.to_string(record_type));
+                }
+            }
         }
 
         reslut

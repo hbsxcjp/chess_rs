@@ -15,7 +15,6 @@ type SetEffect =
 #[derive(Debug)]
 pub struct BitBoard {
     bottom_color: piece::Color,
-    colors: [piece::Color; SEATCOUNT],
     kinds: [piece::Kind; SEATCOUNT],
 
     // 计算中间存储数据(基本局面改动时更新)
@@ -34,7 +33,6 @@ impl BitBoard {
     pub fn new(pieces: &board::Pieces) -> BitBoard {
         let mut bit_board: BitBoard = BitBoard {
             bottom_color: board::get_bottom_color(pieces),
-            colors: [piece::Color::NoColor; SEATCOUNT],
             kinds: [piece::Kind::NoKind; SEATCOUNT],
 
             color_kind_pieces: [[0; KINDCOUNT]; COLORCOUNT],
@@ -50,7 +48,6 @@ impl BitBoard {
             if let piece::Piece::Some(color, kind) = piece {
                 let color_i = *color as usize;
                 let kind_i = *kind as usize;
-                bit_board.colors[index] = *color;
                 bit_board.kinds[index] = *kind;
 
                 bit_board.color_kind_pieces[color_i][kind_i] |= bit_constant::MASK[index];
@@ -74,8 +71,16 @@ impl BitBoard {
         self.hashlock ^ bit_constant::COLORZOBRISTLOCK[color as usize]
     }
 
+    fn get_color(&self, index: usize) -> piece::Color {
+        if self.color_pieces[piece::Color::Red as usize] & bit_constant::MASK[index] == 0 {
+            piece::Color::Black
+        } else {
+            piece::Color::Red
+        }
+    }
+
     fn get_move_from_index(&self, index: usize) -> bit_constant::BitAtom {
-        let color = self.colors[index];
+        let color = self.get_color(index);
         let kind = self.kinds[index];
         let result = match kind {
             piece::Kind::King => bit_constant::KINGMOVE[index],
@@ -160,9 +165,8 @@ impl BitBoard {
     ) -> piece::Kind {
         let start_index = if is_back { to_index } else { from_index };
         let end_index = if is_back { from_index } else { to_index };
-        let from_color = self.colors[start_index];
         let from_kind = self.kinds[start_index];
-        let from_color_i = from_color as usize;
+        let from_color_i = self.get_color(start_index) as usize;
         let from_kind_i = from_kind as usize;
         let from_bitatrom = bit_constant::MASK[from_index];
         let to_bitatom = bit_constant::MASK[to_index];
@@ -172,9 +176,7 @@ impl BitBoard {
         }
 
         // 清除原位置，置位新位置
-        self.colors[end_index] = from_color;
         self.kinds[end_index] = from_kind;
-        self.colors[start_index] = piece::Color::NoColor;
         self.kinds[start_index] = piece::Kind::NoKind;
 
         self.color_kind_pieces[from_color_i][from_kind_i] ^= move_bitatom;
@@ -189,7 +191,6 @@ impl BitBoard {
             let to_color_i = if from_color_i == 0 { 1 } else { 0 };
             let eat_kind_i = eat_kind as usize;
             if is_back {
-                self.colors[start_index] = piece::other_color(from_color);
                 self.kinds[start_index] = eat_kind;
             }
             self.color_kind_pieces[to_color_i][eat_kind_i] ^= to_bitatom;
@@ -216,7 +217,7 @@ impl BitBoard {
         eat_kind: piece::Kind,
     ) {
         // 如是对方将帅的位置则直接可走，不用判断是否被将军（如加以判断，则会直接走棋吃将帅）；棋子已走，取终点位置颜色
-        let is_killed = eat_kind != piece::Kind::King && self.is_killed(self.colors[to_index]);
+        let is_killed = eat_kind != piece::Kind::King && self.is_killed(self.get_color(to_index));
         let score = if is_killed { -1 } else { 0 };
         // 扩展，增加其他功能
 
@@ -307,16 +308,9 @@ impl BitBoard {
     }
 
     pub fn to_string(&self) -> String {
-        let mut result = format!("bottom_color: {:?}\ncolor_kinds:\n", self.bottom_color);
-        for (index, color) in self.colors.iter().enumerate() {
-            result.push(match color {
-                piece::Color::Red => '-',
-                piece::Color::Black => '+',
-                piece::Color::NoColor => '_',
-            });
-            result.push(piece::get_ch(color, &self.kinds[index]));
-            result.push(' ');
-
+        let mut result = format!("bottom_color: {:?}\nkinds_to_chs:\n", self.bottom_color);
+        for (index, kind) in self.kinds.iter().enumerate() {
+            result.push(piece::get_ch(self.get_color(index), *kind));
             if (index + 1) % 9 == 0 {
                 result.push('\n');
             }
@@ -362,17 +356,17 @@ mod tests {
     fn test_bit_board() {
         let fen_board_strings = [
             ("rnbakabnr/9/1c5c1/p1p1p1p1p/9/9/P1P1P1P1P/1C5C1/9/RNBAKABNR","bottom_color: Red
-color_kinds:
-+r +n +b +a +k +a +b +n +r 
-__ __ __ __ __ __ __ __ __ 
-__ +c __ __ __ __ __ +c __ 
-+p __ +p __ +p __ +p __ +p 
-__ __ __ __ __ __ __ __ __ 
-__ __ __ __ __ __ __ __ __ 
--P __ -P __ -P __ -P __ -P 
-__ -C __ __ __ __ __ -C __ 
-__ __ __ __ __ __ __ __ __ 
--R -N -B -A -K -A -B -N -R 
+kinds_to_chs:
+rnbakabnr
+_________
+_c_____c_
+p_p_p_p_p
+_________
+_________
+P_P_P_P_P
+_C_____C_
+_________
+RNBAKABNR
 
 color_kind_pieces:
    ABCDEFGHI ABCDEFGHI ABCDEFGHI ABCDEFGHI ABCDEFGHI ABCDEFGHI ABCDEFGHI 
@@ -529,17 +523,17 @@ count: 16
 count: 16
 "),
             ("5a3/4ak2r/6R2/8p/9/9/9/B4N2B/4K4/3c5","bottom_color: Red
-color_kinds:
-__ __ __ __ __ +a __ __ __ 
-__ __ __ __ +a +k __ __ +r 
-__ __ __ __ __ __ -R __ __ 
-__ __ __ __ __ __ __ __ +p 
-__ __ __ __ __ __ __ __ __ 
-__ __ __ __ __ __ __ __ __ 
-__ __ __ __ __ __ __ __ __ 
--B __ __ __ __ -N __ __ -B 
-__ __ __ __ -K __ __ __ __ 
-__ __ __ +c __ __ __ __ __ 
+kinds_to_chs:
+_____a___
+____ak__r
+______R__
+________p
+_________
+_________
+_________
+B____N__B
+____K____
+___c_____
 
 color_kind_pieces:
    ABCDEFGHI ABCDEFGHI ABCDEFGHI ABCDEFGHI ABCDEFGHI ABCDEFGHI ABCDEFGHI 
@@ -653,17 +647,17 @@ count: 5
 count: 6
 "),
             ("2b1kab2/4a4/4c4/9/9/3R5/9/1C7/4r4/2BK2B2","bottom_color: Red
-color_kinds:
-__ __ +b __ +k +a +b __ __ 
-__ __ __ __ +a __ __ __ __ 
-__ __ __ __ +c __ __ __ __ 
-__ __ __ __ __ __ __ __ __ 
-__ __ __ __ __ __ __ __ __ 
-__ __ __ -R __ __ __ __ __ 
-__ __ __ __ __ __ __ __ __ 
-__ -C __ __ __ __ __ __ __ 
-__ __ __ __ +r __ __ __ __ 
-__ __ -B -K __ __ -B __ __ 
+kinds_to_chs:
+__b_kab__
+____a____
+____c____
+_________
+_________
+___R_____
+_________
+_C_______
+____r____
+__BK__B__
 
 color_kind_pieces:
    ABCDEFGHI ABCDEFGHI ABCDEFGHI ABCDEFGHI ABCDEFGHI ABCDEFGHI ABCDEFGHI 
@@ -778,17 +772,17 @@ count: 5
 count: 7
 "),
             ("4kab2/4a4/4b4/3N5/9/4N4/4n4/4B4/4A4/3AK1B2","bottom_color: Red
-color_kinds:
-__ __ __ __ +k +a +b __ __ 
-__ __ __ __ +a __ __ __ __ 
-__ __ __ __ +b __ __ __ __ 
-__ __ __ -N __ __ __ __ __ 
-__ __ __ __ __ __ __ __ __ 
-__ __ __ __ -N __ __ __ __ 
-__ __ __ __ +n __ __ __ __ 
-__ __ __ __ -B __ __ __ __ 
-__ __ __ __ -A __ __ __ __ 
-__ __ __ -A -K __ -B __ __ 
+kinds_to_chs:
+____kab__
+____a____
+____b____
+___N_____
+_________
+____N____
+____n____
+____B____
+____A____
+___AK_B__
 
 color_kind_pieces:
    ABCDEFGHI ABCDEFGHI ABCDEFGHI ABCDEFGHI ABCDEFGHI ABCDEFGHI ABCDEFGHI 
@@ -916,9 +910,10 @@ count: 6
             result.push_str(&bit_board.to_effects_string());
 
             assert_eq!(board_string, result);
+
             // let name = fen.split_at(3).0;
             // std::fs::write(format!("tests/{name}.txt"), result).expect("Write Err.");
-            // dbg!(board);
+            // dbg!(bit_board);
         }
     }
 }

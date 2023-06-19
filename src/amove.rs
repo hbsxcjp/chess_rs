@@ -1,5 +1,6 @@
 #![allow(dead_code)]
 
+use crate::board;
 // use crate::bit_board;
 // use crate::bit_constant;
 // use std::borrow::Borrow;
@@ -53,14 +54,15 @@ impl Move {
         let mut result = Vec::new();
         let mut amove = self.clone();
         while !amove.is_root() {
-            result.insert(0, amove.clone());
+            result.push(amove.clone());
             amove = amove.before.upgrade().unwrap();
         }
+        result.reverse();
 
         result
     }
 
-    pub fn to_string(&self, record_type: coord::RecordType) -> String {
+    fn get_string(&self, coordpair_string: String) -> String {
         let mut remark = self.remark.borrow().clone();
         if remark.len() > 0 {
             remark = format!("{{{}}}", remark);
@@ -74,13 +76,21 @@ impl Move {
             }
         } else {
             format!(
-                "{:-3}_{:-3}{}{}\n",
+                "{:-3}_{:-3}[{}]{}\n",
                 self.before.upgrade().unwrap().id.borrow(),
                 self.id.borrow(),
-                self.coordpair.to_string(record_type),
+                coordpair_string,
                 remark
             )
         }
+    }
+
+    pub fn to_string_pgnzh(&self, board: board::Board) -> String {
+        self.get_string(board.get_zhstr_from_coordpair(&self.coordpair))
+    }
+
+    pub fn to_string(&self, record_type: coord::RecordType) -> String {
+        self.get_string(self.coordpair.to_string(record_type))
     }
 }
 
@@ -98,6 +108,9 @@ mod tests {
         let remark = String::from("Hello, move.");
         let amove = root_move.add(coordpair, remark);
 
-        assert_eq!("  0_  0[(0,0)->(0,2)]{Hello, move.}\n", amove.to_string(coord::RecordType::Txt));
+        assert_eq!(
+            "  0_  0[(0,0)(0,2)]{Hello, move.}\n",
+            amove.to_string(coord::RecordType::Txt)
+        );
     }
 }
