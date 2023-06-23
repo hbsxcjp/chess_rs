@@ -8,26 +8,24 @@ use std::collections::VecDeque;
 // use crate::bit_constant;
 // use std::borrow::Borrow;
 use crate::board;
+use crate::utility;
 // use crate::manual;
 // use std::cell::RefCell;
 use std::rc::Rc;
 // use std::rc::Weak;
+use regex;
 
 #[derive(Debug)]
 pub struct ManualMove {
     pub board: board::Board,
-
     pub root_move: Rc<amove::Move>,
-    // pub current_move: Rc<amove::Move>,
 }
 
 impl ManualMove {
     fn from(fen: &str, root_move: Rc<amove::Move>) -> Self {
-        // let current_move = root_move.clone();
         ManualMove {
             board: board::Board::new(fen),
             root_move,
-            // current_move,
         }
     }
 
@@ -37,7 +35,7 @@ impl ManualMove {
 
     pub fn from_xqf(
         fen: &str,
-        byte_vec: &Vec<u8>,
+        input: &Vec<u8>,
         version: u8,
         keyxyf: usize,
         keyxyt: usize,
@@ -48,7 +46,7 @@ impl ManualMove {
 
         let read_bytes = |pos: &mut usize, size| {
             let new_pos = *pos + size;
-            let mut bytes = byte_vec[*pos..new_pos].to_vec();
+            let mut bytes = input[*pos..new_pos].to_vec();
             if version > 10 {
                 // '字节解密'
                 for (index, abyte) in bytes.iter_mut().enumerate() {
@@ -61,13 +59,8 @@ impl ManualMove {
         };
 
         let get_remark_size = |pos: &mut usize| {
-            const INTSIZE: usize = 4;
-            let data = read_bytes(pos, INTSIZE);
-            (data[0] as usize
-                + ((data[1] as usize) << 8)
-                + ((data[2] as usize) << 16)
-                + ((data[3] as usize) << 24))
-                - keyrmksize
+            let data = read_bytes(pos, std::mem::size_of::<u32>());
+            u32::from_le_bytes(data.try_into().unwrap()) as usize - keyrmksize
         };
 
         let get_data_remark = |pos: &mut usize| {
@@ -85,18 +78,17 @@ impl ManualMove {
                 }
             }
 
-            (
-                data,
-                if remark_size > 0 {
-                    GBK.decode(&read_bytes(pos, remark_size), DecoderTrap::Ignore)
-                        .unwrap()
-                        .replace("\r\n", "\n")
-                        .trim()
-                        .into()
-                } else {
-                    String::new()
-                },
-            )
+            let remark = if remark_size > 0 {
+                GBK.decode(&read_bytes(pos, remark_size), DecoderTrap::Ignore)
+                    .unwrap()
+                    .replace("\r\n", "\n")
+                    .trim()
+                    .into()
+            } else {
+                String::new()
+            };
+
+            (data, remark)
         };
 
         let mut pos: usize = 1024;
@@ -109,7 +101,7 @@ impl ManualMove {
             let mut before_move = root_move.clone();
             let mut is_other = false;
             // 当前棋子非根，或为根尚无后续棋子/当前棋子为根，且有后继棋子时，表明深度搜索已经回退到根，已经没有后续棋子了
-            while pos < byte_vec.len()
+            while pos < input.len()
                 && (!before_move.is_root() || before_move.after.borrow().len() == 0)
             {
                 let (data, remark) = get_data_remark(&mut pos);
@@ -157,6 +149,60 @@ impl ManualMove {
         //         => !GetBoardWith(move.Before).BitBoard.CanMove(move.CoordPair)));
     }
 
+    pub fn from_bin(fen: &str, input: &mut &[u8]) -> Self {
+        fn take_remark_after_num(input: &mut &[u8]) -> (String, usize) {
+            let remark = utility::read_string(input);
+            let after_num = utility::read_be_u32(input) as usize;
+
+            (remark, after_num)
+        }
+
+        let root_move = amove::Move::root();
+        let (root_remark, root_after_num) = take_remark_after_num(input);
+        *root_move.remark.borrow_mut() = root_remark;
+
+        let mut move_after_num_deque: VecDeque<(Rc<amove::Move>, usize)> = VecDeque::new();
+        move_after_num_deque.push_back((root_move.clone(), root_after_num));
+        while move_after_num_deque.len() > 0 {
+            let (before_move, before_after_num) = move_after_num_deque.pop_front().unwrap();
+            for _ in 0..before_after_num {
+                let (rowcol_bytes, rest) = input.split_at(4);
+                *input = rest;
+
+                let frow = rowcol_bytes[0] as usize;
+                let fcol = rowcol_bytes[1] as usize;
+                let trow = rowcol_bytes[2] as usize;
+                let tcol = rowcol_bytes[3] as usize;
+                let coordpair = CoordPair::from_rowcol(frow, fcol, trow, tcol).unwrap();
+                let (remark, after_num) = take_remark_after_num(input);
+
+                let amove = before_move.add(coordpair, remark);
+                if after_num > 0 {
+                    move_after_num_deque.push_back((amove, after_num));
+                }
+            }
+        }
+
+        ManualMove::from(fen, root_move)
+    }
+
+    pub fn get_bytes(&self) -> Vec<u8> {
+        fn append_remark_after_num(result: &mut Vec<u8>, amove: &Rc<amove::Move>) {
+            utility::write_string(result, amove.remark.borrow().as_str());
+            utility::write_be_u32(result, amove.after.borrow().len() as u32);
+        }
+
+        let mut result = Vec::new();
+        append_remark_after_num(&mut result, &self.root_move);
+        for amove in self.get_all_after_moves() {
+            let (frow, fcol, trow, tcol) = amove.coordpair.row_col();
+            result.append(&mut vec![frow as u8, fcol as u8, trow as u8, tcol as u8]);
+            append_remark_after_num(&mut result, &amove);
+        }
+
+        result
+    }
+
     fn get_all_after_moves(&self) -> Vec<Rc<amove::Move>> {
         fn enqueue_after(move_deque: &mut VecDeque<Rc<amove::Move>>, amove: &Rc<amove::Move>) {
             for after_move in amove.after.borrow().iter() {
@@ -183,7 +229,6 @@ impl ManualMove {
         let mut reslut = self.root_move.to_string(record_type);
         for amove in self.get_all_after_moves() {
             match record_type {
-                coord::RecordType::Xqf => (),
                 coord::RecordType::PgnZh => {
                     let board = self.board.to_move(&amove.before.upgrade().unwrap());
                     reslut.push_str(&amove.to_string_pgnzh(board));

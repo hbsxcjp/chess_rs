@@ -12,6 +12,7 @@ pub const ROWSTATECOUNT: usize = 1 << COLCOUNT;
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum RecordType {
     Xqf,
+    Bin,
     Txt,
     PgnRc,
     PgnIccs,
@@ -48,6 +49,7 @@ pub struct Coord {
     pub row: usize,
     pub col: usize,
 }
+
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct CoordPair {
     pub from_coord: Coord,
@@ -70,6 +72,10 @@ impl Coord {
         }
     }
 
+    pub fn index(&self) -> usize {
+        self.row * COLCOUNT + self.col
+    }
+
     pub fn from_rowcol(row: usize, col: usize) -> Option<Self> {
         if row < ROWCOUNT && col < COLCOUNT {
             Some(Coord { row, col })
@@ -78,8 +84,8 @@ impl Coord {
         }
     }
 
-    pub fn index(&self) -> usize {
-        self.row * COLCOUNT + self.col
+    pub fn row_col(&self) -> (usize, usize) {
+        (self.row, self.col)
     }
 
     pub fn to_change(&self, ct: ChangeType) -> Self {
@@ -97,6 +103,14 @@ impl Coord {
                 col: self.col,
             },
             _ => *self,
+        }
+    }
+
+    pub fn index_to_change(index: usize, ct: ChangeType) -> usize {
+        if let Some(coord) = Coord::from_index(index) {
+            coord.to_change(ct).index()
+        } else {
+            usize::MAX
         }
     }
 
@@ -118,15 +132,16 @@ impl Coord {
 
     pub fn to_string(&self, record_type: RecordType) -> String {
         match record_type {
-            // RecordType::Xqf => String::new(),
-            RecordType::Txt => format!("({},{})", self.row, self.col),
             RecordType::PgnRc => format!("{}{}", self.row, self.col),
             RecordType::PgnIccs => format!(
                 "{}{}",
                 char::from_u32('A' as u32 + self.col as u32).unwrap_or('X'),
                 self.row
             ),
-            _ => String::new(),
+
+            // RecordType::Txt => format!("({},{})", self.row, self.col),
+            // _ => String::new(),
+            _ => format!("({},{})", self.row, self.col),
         }
     }
 }
@@ -139,7 +154,7 @@ impl CoordPair {
         }
     }
 
-    pub fn from_coord(from_coord: Coord, to_coord: Coord) -> Self {
+    pub fn from(from_coord: Coord, to_coord: Coord) -> Self {
         CoordPair {
             from_coord,
             to_coord,
@@ -149,11 +164,20 @@ impl CoordPair {
     pub fn from_rowcol(frow: usize, fcol: usize, trow: usize, tcol: usize) -> Option<Self> {
         if let Some(from_coord) = Coord::from_rowcol(frow, fcol) {
             if let Some(to_coord) = Coord::from_rowcol(trow, tcol) {
-                return Some(CoordPair::from_coord(from_coord, to_coord));
+                return Some(CoordPair::from(from_coord, to_coord));
             }
         }
 
         None
+    }
+
+    pub fn row_col(&self) -> (usize, usize, usize, usize) {
+        (
+            self.from_coord.row,
+            self.from_coord.col,
+            self.to_coord.row,
+            self.to_coord.col,
+        )
     }
 
     pub fn to_string(&self, record_type: RecordType) -> String {

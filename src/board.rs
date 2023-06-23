@@ -77,20 +77,21 @@ fn fen_to_piece_chars(fen: &str) -> String {
         if ch.is_ascii_alphabetic() {
             result.push(ch);
         } else if ch.is_ascii_digit() {
-            result.push_str(&"_".repeat(ch.to_digit(10).unwrap_or_default() as usize));
+            result.push_str(&"_".repeat(ch.to_digit(10).unwrap() as usize));
         }
     }
+    // println!("piece_chars: {result}");
+    assert_eq!(result.len(), coord::SEATCOUNT);
 
     result
 }
 
 fn piece_chars_to_pieces(piece_chars: &str) -> Pieces {
     let mut result = [piece::Piece::None; coord::SEATCOUNT];
+    assert_eq!(piece_chars.len(), coord::SEATCOUNT);
+
     for (index, ch) in piece_chars.chars().enumerate() {
         result[index] = piece::Piece::new(ch);
-        if index + 1 == result.len() {
-            break;
-        }
     }
 
     result
@@ -123,30 +124,27 @@ pub fn fen_to_change(fen: &str, ct: ChangeType) -> String {
         line_vec
     };
 
-    fn rev_line_vec_string(line_vec: Vec<&str>) -> Vec<String> {
-        let mut new_line_vec = Vec::new();
-        for line in line_vec {
-            let mut new_line = String::new();
-            for ch in line.chars() {
-                new_line.insert(0, ch);
-            }
-            new_line_vec.push(new_line);
-        }
-
-        new_line_vec
+    fn reverse_line_string(line_vec: Vec<&str>) -> Vec<String> {
+        line_vec
+            .iter()
+            .map(|&line| {
+                let mut new_line = String::new();
+                for ch in line.chars().rev() {
+                    new_line.push(ch);
+                }
+                new_line
+            })
+            .collect()
     }
 
+    let sep = &FENSPLITCHAR.to_string();
     match ct {
         ChangeType::Exchange => {
             String::from_iter(fen.chars().into_iter().map(|ch| piece::other_ch(ch)))
         }
-        ChangeType::Rotate => {
-            rev_line_vec_string(get_line_vec(true)).join(&FENSPLITCHAR.to_string())
-        }
-        ChangeType::SymmetryH => {
-            rev_line_vec_string(get_line_vec(false)).join(&FENSPLITCHAR.to_string())
-        }
-        ChangeType::SymmetryV => get_line_vec(true).join(&FENSPLITCHAR.to_string()),
+        ChangeType::Rotate => reverse_line_string(get_line_vec(true)).join(sep),
+        ChangeType::SymmetryH => reverse_line_string(get_line_vec(false)).join(sep),
+        ChangeType::SymmetryV => get_line_vec(true).join(sep),
         _ => String::from(fen),
     }
 }
@@ -158,6 +156,7 @@ pub fn get_bottom_color(pieces: &Pieces) -> piece::Color {
         }
     }
 
+    assert!(false, "没有找到将帅棋子。");
     piece::Color::Red
 }
 
@@ -177,7 +176,7 @@ impl Board {
     }
 
     pub fn to_move(&self, amove: &Rc<amove::Move>) -> Self {
-        let mut pieces = self.pieces.clone();
+        let mut pieces = self.pieces;
         for bmove in amove.before_moves() {
             let from_index = bmove.coordpair.from_coord.index();
             let to_index = bmove.coordpair.to_coord.index();
@@ -199,11 +198,9 @@ impl Board {
                 }
             }
             _ => {
-                let pieces = self.pieces.clone();
-                for (index, _) in pieces.iter().enumerate() {
-                    if let Some(coord) = Coord::from_index(index) {
-                        self.pieces[index] = pieces[coord.to_change(ct).index()];
-                    }
+                let pieces = self.pieces;
+                for index in 0..pieces.len() {
+                    self.pieces[index] = pieces[Coord::index_to_change(index, ct)];
                 }
             }
         }
@@ -330,7 +327,7 @@ impl Board {
         }
 
         let to_coord = Coord::from_rowcol(to_row, to_col).unwrap();
-        CoordPair::from_coord(from_coord, to_coord)
+        CoordPair::from(from_coord, to_coord)
     }
 
     fn get_coords_from_color_kind(&self, color: piece::Color, kind: piece::Kind) -> Vec<Coord> {

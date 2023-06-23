@@ -1,5 +1,8 @@
 #![allow(dead_code)]
 
+// use serde_derive::Deserialize;
+// use serde_derive::Serialize;
+
 use crate::board;
 // use crate::bit_board;
 // use crate::bit_constant;
@@ -10,7 +13,7 @@ use std::cell::RefCell;
 use std::rc::Rc;
 use std::rc::Weak;
 
-#[derive(Debug)]
+#[derive(Debug)] //, Serialize, Deserialize
 pub struct Move {
     pub id: RefCell<usize>,
     pub before: Weak<Move>,
@@ -104,7 +107,7 @@ mod tests {
 
         let from_coord = coord::Coord::from_rowcol(0, 0).unwrap();
         let to_coord = coord::Coord::from_rowcol(0, 2).unwrap();
-        let coordpair = coord::CoordPair::from_coord(from_coord, to_coord);
+        let coordpair = coord::CoordPair::from(from_coord, to_coord);
         let remark = String::from("Hello, move.");
         let amove = root_move.add(coordpair, remark);
 

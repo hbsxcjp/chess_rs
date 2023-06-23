@@ -5,8 +5,11 @@ use crate::coord::{COLCOUNT, ROWCOUNT, SEATCOUNT};
 use crate::manual_move;
 use encoding::all::GBK;
 use encoding::{DecoderTrap, Encoding};
+// use serde::de::value;
 // use crate::bit_constant;
 use crate::board;
+use crate::utility;
+use std::borrow::Borrow;
 use std::collections::BTreeMap;
 // use std::rc::Rc;
 
@@ -49,7 +52,7 @@ impl Manual {
     fn from_xqf(file_name: &str) -> Self {
         let mut info = BTreeMap::new();
         let mut manual_move = manual_move::ManualMove::new();
-        if let Ok(byte_vec) = std::fs::read(file_name) {
+        if let Ok(input) = std::fs::read(file_name) {
             //文件标记'XQ'=$5158/版本/加密掩码/ProductId[4], 产品(厂商的产品号)
             // 棋谱评论员/文件的作者
             // 32个棋子的原始位置
@@ -62,39 +65,39 @@ impl Manual {
             // 从下到上)PlayStepNo[2],
             // 对局类型(开,中,残等)
             const PIECENUM: usize = 32;
-            let signature = &byte_vec[0..2];
+            let signature = &input[0..2];
             // let productid = &byte_vec[4..8];
-            let headqizixy = &byte_vec[16..48];
+            let headqizixy = &input[16..48];
             // let playstepno = &byte_vec[48..50];
             // let playnodes = &byte_vec[52..56];
             // let ptreepos = &byte_vec[56..60];
             // let reserved1 = &byte_vec[60..64];
-            let headcodea_h = &byte_vec[64..80];
-            let titlea = &byte_vec[80..144];
+            let headcodea_h = &input[64..80];
+            let titlea = &input[80..144];
             // let titleb = &byte_vec[144..208];
-            let event = &byte_vec[208..272];
-            let date = &byte_vec[272..288];
-            let site = &byte_vec[288..304];
-            let red = &byte_vec[304..320];
-            let black = &byte_vec[320..336];
-            let opening = &byte_vec[336..400];
+            let event = &input[208..272];
+            let date = &input[272..288];
+            let site = &input[288..304];
+            let red = &input[304..320];
+            let black = &input[320..336];
+            let opening = &input[336..400];
             // let redtime = &byte_vec[400..416];
             // let blktime = &byte_vec[416..432];
             // let reservedh = &byte_vec[432..464];
-            let rmkwriter = &byte_vec[464..480];
-            let author = &byte_vec[480..496]; //, Other[528]{};
-            let version = byte_vec[2];
-            let headkeymask = byte_vec[3];
-            let headkeyora = byte_vec[8];
-            let headkeyorb = byte_vec[9];
-            let headkeyorc = byte_vec[10];
-            let headkeyord = byte_vec[11];
-            let headkeyssum = byte_vec[12] as usize;
-            let headkeyxy = byte_vec[13] as usize;
-            let headkeyxyf = byte_vec[14] as usize;
-            let headkeyxyt = byte_vec[15] as usize;
+            let rmkwriter = &input[464..480];
+            let author = &input[480..496]; //, Other[528]{};
+            let version = input[2];
+            let headkeymask = input[3];
+            let headkeyora = input[8];
+            let headkeyorb = input[9];
+            let headkeyorc = input[10];
+            let headkeyord = input[11];
+            let headkeyssum = input[12] as usize;
+            let headkeyxy = input[13] as usize;
+            let headkeyxyf = input[14] as usize;
+            let headkeyxyt = input[15] as usize;
             // let headwhoplay = byte_vec[50];
-            let headplayresult = byte_vec[51] as usize;
+            let headplayresult = input[51] as usize;
 
             if signature[0] != 0x58 || signature[1] != 0x51 {
                 assert!(false, "文件标记不符。");
@@ -199,7 +202,7 @@ impl Manual {
             }
 
             manual_move = manual_move::ManualMove::from_xqf(
-                &fen, &byte_vec, version, keyxyf, keyxyt, keyrmksize, &f32keys,
+                &fen, &input, version, keyxyf, keyxyt, keyrmksize, &f32keys,
             );
         }
 
@@ -215,6 +218,43 @@ impl Manual {
             Some(value) => value.split(" ").collect::<Vec<&str>>()[0],
             None => board::FEN,
         }
+    }
+
+    pub fn from_bin(file_name: &str) -> Self {
+        let mut info = BTreeMap::new();
+        let mut manual_move = manual_move::ManualMove::new();
+        if let Ok(input) = std::fs::read(file_name) {
+            let mut input = input.borrow();
+            let info_len = utility::read_be_u32(&mut input);
+            for _ in 0..info_len {
+                let key = utility::read_string(&mut input);
+                let value = utility::read_string(&mut input);
+
+                // println!("key_value: {key} = {value}");
+                info.insert(key, value);
+            }
+            let fen = info
+                .get(&format!("{:?}", InfoKey::FEN))
+                .unwrap()
+                .split(' ')
+                .collect::<Vec<&str>>()[0];
+
+            manual_move = manual_move::ManualMove::from_bin(fen, &mut input);
+        }
+
+        Manual { info, manual_move }
+    }
+
+    pub fn get_bytes(&self) -> Vec<u8> {
+        let mut result = Vec::new();
+        utility::write_be_u32(&mut result, self.info.len() as u32);
+        for (key, value) in &self.info {
+            utility::write_string(&mut result, key);
+            utility::write_string(&mut result, value);
+        }
+        result.append(&mut self.manual_move.get_bytes());
+
+        result
     }
 
     pub fn get_info_string(&self) -> String {
@@ -583,13 +623,20 @@ mod tests {
         ];
         for (file_name, manual_string) in file_name_manual_strings {
             let manual = Manual::from_xqf(&format!("tests/xqf/{file_name}.xqf"));
-
             assert_eq!(manual_string, manual.to_string(coord::RecordType::Txt));
 
+            let bin_file_name = format!("tests/{file_name}.bin");
+            let manual = Manual::from_bin(&bin_file_name);
+            assert_eq!(manual_string, manual.to_string(coord::RecordType::Txt));
+
+            // std::fs::write(bin_file_name, manual.get_bytes()).expect("Write Err.");
             // 输出内容以备查看
             for record_type in [coord::RecordType::PgnZh] {
-                std::fs::write(format!("tests/{file_name}.txt"), manual.to_string(record_type))
-                    .expect("Write Err.");
+                std::fs::write(
+                    format!("tests/{file_name}.txt"),
+                    manual.to_string(record_type),
+                )
+                .expect("Write Err.");
             }
         }
     }
