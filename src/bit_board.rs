@@ -911,8 +911,8 @@ count: 6
 
             assert_eq!(board_string, result);
 
-            // let name = fen.split_at(3).0;
-            // std::fs::write(format!("tests/{name}.txt"), result).expect("Write Err.");
+            let name = fen.split_at(3).0;
+            std::fs::write(format!("tests/output/bit_board_{name}.txt"), result).expect("Write Err.");
             // dbg!(bit_board);
         }
     }

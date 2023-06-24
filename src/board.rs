@@ -161,7 +161,11 @@ pub fn get_bottom_color(pieces: &Pieces) -> piece::Color {
 }
 
 impl Board {
-    pub fn new(fen: &str) -> Self {
+    pub fn new() -> Self {
+        Self::from(FEN)
+    }
+
+    pub fn from(fen: &str) -> Self {
         Board {
             pieces: fen_to_pieces(fen),
         }
@@ -546,11 +550,12 @@ mod tests {
             assert_eq!(fen_to_piece_chars(fen), piece_chars);
             assert_eq!(piece_chars_to_fen(piece_chars), fen);
 
-            let mut board = Board::new(fen);
+            let mut board = Board::from(fen);
 
             assert_eq!(board.to_string(), to_string);
-            // let name = fen.split_at(3).0;
-            // std::fs::write(format!("tests/{name}.txt"), board.to_string()).expect("Write Err.");
+            let name = fen.split_at(3).0;
+            std::fs::write(format!("tests/output/board_{name}.txt"), board.to_string())
+                .expect("Write Err.");
             // dbg!(board);
 
             for ct in [

@@ -84,6 +84,24 @@ impl Coord {
         }
     }
 
+    pub fn from_string(coord_str: &str, record_type: RecordType) -> Option<Self> {
+        match record_type {
+            RecordType::PgnRc => Self::from_rowcol(
+                coord_str[0..1].parse().unwrap(),
+                coord_str[1..2].parse().unwrap(),
+            ),
+            RecordType::PgnIccs => Self::from_rowcol(
+                coord_str[1..2].parse().unwrap(),
+                coord_str.chars().next().unwrap() as usize - 'A' as usize,
+            ),
+            RecordType::Txt => Self::from_rowcol(
+                coord_str[1..2].parse().unwrap(),
+                coord_str[3..4].parse().unwrap(),
+            ),
+            _ => None,
+        }
+    }
+
     pub fn row_col(&self) -> (usize, usize) {
         (self.row, self.col)
     }
@@ -135,7 +153,7 @@ impl Coord {
             RecordType::PgnRc => format!("{}{}", self.row, self.col),
             RecordType::PgnIccs => format!(
                 "{}{}",
-                char::from_u32('A' as u32 + self.col as u32).unwrap_or('X'),
+                char::from_u32('A' as u32 + self.col as u32).unwrap(),
                 self.row
             ),
 

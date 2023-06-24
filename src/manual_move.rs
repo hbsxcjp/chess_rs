@@ -8,12 +8,12 @@ use std::collections::VecDeque;
 // use crate::bit_constant;
 // use std::borrow::Borrow;
 use crate::board;
-use crate::utility;
+// use crate::utility;
 // use crate::manual;
 // use std::cell::RefCell;
 use std::rc::Rc;
 // use std::rc::Weak;
-use regex;
+// use regex;
 
 #[derive(Debug)]
 pub struct ManualMove {
@@ -24,7 +24,7 @@ pub struct ManualMove {
 impl ManualMove {
     fn from(fen: &str, root_move: Rc<amove::Move>) -> Self {
         ManualMove {
-            board: board::Board::new(fen),
+            board: board::Board::from(fen),
             root_move,
         }
     }
@@ -125,7 +125,9 @@ impl ManualMove {
                 }
 
                 if is_other {
-                    before_move = before_move.before.upgrade().unwrap();
+                    if let Some(before) = &before_move.before {
+                        before_move = before.upgrade().unwrap();
+                    }
                 }
 
                 before_move = before_move.add(coord_pair, remark);
@@ -150,15 +152,8 @@ impl ManualMove {
     }
 
     pub fn from_bin(fen: &str, input: &mut &[u8]) -> Self {
-        fn take_remark_after_num(input: &mut &[u8]) -> (String, usize) {
-            let remark = utility::read_string(input);
-            let after_num = utility::read_be_u32(input) as usize;
-
-            (remark, after_num)
-        }
-
         let root_move = amove::Move::root();
-        let (root_remark, root_after_num) = take_remark_after_num(input);
+        let (_, root_remark, root_after_num) = amove::Move::take_move_data(input, true);
         *root_move.remark.borrow_mut() = root_remark;
 
         let mut move_after_num_deque: VecDeque<(Rc<amove::Move>, usize)> = VecDeque::new();
@@ -166,16 +161,7 @@ impl ManualMove {
         while move_after_num_deque.len() > 0 {
             let (before_move, before_after_num) = move_after_num_deque.pop_front().unwrap();
             for _ in 0..before_after_num {
-                let (rowcol_bytes, rest) = input.split_at(4);
-                *input = rest;
-
-                let frow = rowcol_bytes[0] as usize;
-                let fcol = rowcol_bytes[1] as usize;
-                let trow = rowcol_bytes[2] as usize;
-                let tcol = rowcol_bytes[3] as usize;
-                let coordpair = CoordPair::from_rowcol(frow, fcol, trow, tcol).unwrap();
-                let (remark, after_num) = take_remark_after_num(input);
-
+                let (coordpair, remark, after_num) = amove::Move::take_move_data(input, false);
                 let amove = before_move.add(coordpair, remark);
                 if after_num > 0 {
                     move_after_num_deque.push_back((amove, after_num));
@@ -187,17 +173,10 @@ impl ManualMove {
     }
 
     pub fn get_bytes(&self) -> Vec<u8> {
-        fn append_remark_after_num(result: &mut Vec<u8>, amove: &Rc<amove::Move>) {
-            utility::write_string(result, amove.remark.borrow().as_str());
-            utility::write_be_u32(result, amove.after.borrow().len() as u32);
-        }
-
         let mut result = Vec::new();
-        append_remark_after_num(&mut result, &self.root_move);
+        self.root_move.write_to(&mut result);
         for amove in self.get_all_after_moves() {
-            let (frow, fcol, trow, tcol) = amove.coordpair.row_col();
-            result.append(&mut vec![frow as u8, fcol as u8, trow as u8, tcol as u8]);
-            append_remark_after_num(&mut result, &amove);
+            amove.write_to(&mut result);
         }
 
         result
@@ -213,11 +192,7 @@ impl ManualMove {
         let mut all_after_moves: Vec<Rc<amove::Move>> = Vec::new();
         let mut move_deque: VecDeque<Rc<amove::Move>> = VecDeque::new();
         enqueue_after(&mut move_deque, &self.root_move);
-        let mut id = 0;
         while let Some(amove) = move_deque.pop_front() {
-            id += 1;
-            *amove.id.borrow_mut() = id;
-
             enqueue_after(&mut move_deque, &amove);
             all_after_moves.push(amove);
         }
@@ -226,17 +201,9 @@ impl ManualMove {
     }
 
     pub fn to_string(&self, record_type: coord::RecordType) -> String {
-        let mut reslut = self.root_move.to_string(record_type);
+        let mut reslut = self.root_move.to_string(record_type, &self.board);
         for amove in self.get_all_after_moves() {
-            match record_type {
-                coord::RecordType::PgnZh => {
-                    let board = self.board.to_move(&amove.before.upgrade().unwrap());
-                    reslut.push_str(&amove.to_string_pgnzh(board));
-                }
-                _ => {
-                    reslut.push_str(&amove.to_string(record_type));
-                }
-            }
+            reslut.push_str(&amove.to_string(record_type, &self.board));
         }
 
         reslut
@@ -251,6 +218,6 @@ mod tests {
     fn test_manual_move() {
         let manual_move = ManualMove::new();
 
-        assert_eq!("", manual_move.to_string(coord::RecordType::Txt));
+        assert_eq!("\n", manual_move.to_string(coord::RecordType::Txt));
     }
 }

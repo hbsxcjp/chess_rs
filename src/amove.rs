@@ -9,14 +9,15 @@ use crate::board;
 // use std::borrow::Borrow;
 // use std::borrow::Borrow;
 use crate::coord;
+use crate::coord::CoordPair;
+use crate::utility;
 use std::cell::RefCell;
 use std::rc::Rc;
 use std::rc::Weak;
 
 #[derive(Debug)] //, Serialize, Deserialize
 pub struct Move {
-    pub id: RefCell<usize>,
-    pub before: Weak<Move>,
+    pub before: Option<Weak<Move>>,
     pub after: RefCell<Vec<Rc<Move>>>,
 
     pub coordpair: coord::CoordPair,
@@ -26,8 +27,7 @@ pub struct Move {
 impl Move {
     pub fn root() -> Rc<Self> {
         Rc::new(Move {
-            id: RefCell::new(0),
-            before: Weak::new(),
+            before: None,
             after: RefCell::new(vec![]),
 
             coordpair: coord::CoordPair::new(),
@@ -36,13 +36,15 @@ impl Move {
     }
 
     pub fn is_root(&self) -> bool {
-        self.before.upgrade().is_none()
+        match self.before {
+            Some(_) => false,
+            None => true,
+        }
     }
 
     pub fn add(self: &Rc<Self>, coordpair: coord::CoordPair, remark: String) -> Rc<Self> {
         let amove = Rc::new(Move {
-            id: RefCell::new(0),
-            before: Rc::downgrade(self),
+            before: Some(Rc::downgrade(self)),
             after: RefCell::new(vec![]),
 
             coordpair,
@@ -58,42 +60,63 @@ impl Move {
         let mut amove = self.clone();
         while !amove.is_root() {
             result.push(amove.clone());
-            amove = amove.before.upgrade().unwrap();
+            if let Some(before) = &amove.before {
+                amove = before.upgrade().unwrap();
+            }
         }
         result.reverse();
 
         result
     }
 
-    fn get_string(&self, coordpair_string: String) -> String {
-        let mut remark = self.remark.borrow().clone();
-        if remark.len() > 0 {
-            remark = format!("{{{}}}", remark);
-        }
-
-        if self.is_root() {
-            if remark.len() > 0 {
-                remark + "\n"
-            } else {
-                remark
-            }
+    pub fn take_move_data(input: &mut &[u8], is_root: bool) -> (CoordPair, String, usize) {
+        let coordpair = if !is_root {
+            utility::read_coordpair(input)
         } else {
-            format!(
-                "{:-3}_{:-3}[{}]{}\n",
-                self.before.upgrade().unwrap().id.borrow(),
-                self.id.borrow(),
-                coordpair_string,
-                remark
-            )
+            CoordPair::new()
+        };
+
+        let remark = utility::read_string(input);
+        let after_num = utility::read_be_u32(input) as usize;
+
+        (coordpair, remark, after_num)
+    }
+
+    pub fn write_to(&self, output: &mut Vec<u8>) {
+        if !self.is_root() {
+            utility::write_coordpair(output, &self.coordpair);
         }
+
+        utility::write_string(output, self.remark.borrow().as_str());
+        utility::write_be_u32(output, self.after.borrow().len() as u32);
     }
 
-    pub fn to_string_pgnzh(&self, board: board::Board) -> String {
-        self.get_string(board.get_zhstr_from_coordpair(&self.coordpair))
-    }
+    pub fn to_string(&self, record_type: coord::RecordType, board: &board::Board) -> String {
+        let coordpair_string = if self.is_root() {
+            String::new()
+        } else {
+            if record_type == coord::RecordType::PgnZh {
+                let before = self.before.as_ref().unwrap().upgrade().unwrap().clone();
+                let board = board.to_move(&before);
+                board.get_zhstr_from_coordpair(&self.coordpair)
+            } else {
+                self.coordpair.to_string(record_type)
+            }
+        };
 
-    pub fn to_string(&self, record_type: coord::RecordType) -> String {
-        self.get_string(self.coordpair.to_string(record_type))
+        let remark = if self.remark.borrow().len() > 0 {
+            format!("{{{}}}", self.remark.borrow().clone())
+        } else {
+            String::new()
+        };
+
+        let after_num = if self.after.borrow().len() > 0 {
+            format!("({})", self.after.borrow().len())
+        } else {
+            String::new()
+        };
+
+        format!("{}{}{}\n", coordpair_string, remark, after_num)
     }
 }
 
@@ -110,10 +133,11 @@ mod tests {
         let coordpair = coord::CoordPair::from(from_coord, to_coord);
         let remark = String::from("Hello, move.");
         let amove = root_move.add(coordpair, remark);
+        let board = board::Board::new();
 
         assert_eq!(
-            "  0_  0[(0,0)(0,2)]{Hello, move.}\n",
-            amove.to_string(coord::RecordType::Txt)
+            "(0,0)(0,2){Hello, move.}\n",
+            amove.to_string(coord::RecordType::Txt, &board)
         );
     }
 }
