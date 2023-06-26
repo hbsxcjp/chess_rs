@@ -11,6 +11,7 @@ use crate::board;
 use crate::coord;
 use crate::coord::CoordPair;
 use crate::utility;
+// use std::borrow::BorrowMut;
 use std::cell::RefCell;
 use std::rc::Rc;
 use std::rc::Weak;
@@ -42,7 +43,7 @@ impl Move {
         }
     }
 
-    pub fn add(self: &Rc<Self>, coordpair: coord::CoordPair, remark: String) -> Rc<Self> {
+    pub fn append(self: &Rc<Self>, coordpair: coord::CoordPair, remark: String) -> Rc<Self> {
         let amove = Rc::new(Move {
             before: Some(Rc::downgrade(self)),
             after: RefCell::new(vec![]),
@@ -69,7 +70,7 @@ impl Move {
         result
     }
 
-    pub fn take_move_data(input: &mut &[u8], is_root: bool) -> (CoordPair, String, usize) {
+    pub fn get_from_input(input: &mut &[u8], is_root: bool) -> (CoordPair, String, usize) {
         let coordpair = if !is_root {
             utility::read_coordpair(input)
         } else {
@@ -82,13 +83,31 @@ impl Move {
         (coordpair, remark, after_num)
     }
 
-    pub fn write_to(&self, output: &mut Vec<u8>) {
+    pub fn to_output(&self, output: &mut Vec<u8>) {
         if !self.is_root() {
             utility::write_coordpair(output, &self.coordpair);
         }
 
         utility::write_string(output, self.remark.borrow().as_str());
         utility::write_be_u32(output, self.after.borrow().len() as u32);
+    }
+
+    pub fn get_from_string(
+        input: Vec<&str>,
+        record_type: coord::RecordType,
+        is_root: bool,
+    ) -> (CoordPair, String, usize) {
+        assert!(input.len() == 3);
+        let coordpair = if !is_root {
+            CoordPair::from_string(input[0], record_type)
+        } else {
+            CoordPair::new()
+        };
+
+        let remark = input[1].to_string();
+        let after_num = input[2].parse().unwrap();
+
+        (coordpair, remark, after_num)
     }
 
     pub fn to_string(&self, record_type: coord::RecordType, board: &board::Board) -> String {
@@ -132,7 +151,7 @@ mod tests {
         let to_coord = coord::Coord::from_rowcol(0, 2).unwrap();
         let coordpair = coord::CoordPair::from(from_coord, to_coord);
         let remark = String::from("Hello, move.");
-        let amove = root_move.add(coordpair, remark);
+        let amove = root_move.append(coordpair, remark);
         let board = board::Board::new();
 
         assert_eq!(

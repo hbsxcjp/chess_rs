@@ -189,6 +189,14 @@ impl CoordPair {
         None
     }
 
+    pub fn from_string(coordpair_str: &str, record_type: RecordType) -> Self {
+        let mid = coordpair_str.len() / 2;
+        Self::from(
+            Coord::from_string(&coordpair_str[..mid], record_type).unwrap_or(Coord::new()),
+            Coord::from_string(&coordpair_str[mid..], record_type).unwrap_or(Coord::new()),
+        )
+    }
+
     pub fn row_col(&self) -> (usize, usize, usize, usize) {
         (
             self.from_coord.row,

@@ -5,6 +5,9 @@ use crate::coord::{COLCOUNT, ROWCOUNT, SEATCOUNT};
 use crate::manual_move;
 use encoding::all::GBK;
 use encoding::{DecoderTrap, Encoding};
+use std::fs::File;
+use std::io::prelude::*;
+use std::io::BufReader;
 // use serde::de::value;
 // use crate::bit_constant;
 use crate::board;
@@ -41,11 +44,40 @@ pub struct Manual {
     pub manual_move: manual_move::ManualMove,
 }
 
+fn get_file_ext_name(record_type: coord::RecordType) -> String {
+    format!("{:?}", record_type).to_ascii_lowercase()
+}
+
+fn get_record_type(file_name: &str) -> coord::RecordType {
+    let ext_pos = file_name.rfind('.').unwrap();
+    let ext_name = file_name[(ext_pos + 1)..].to_string();
+
+    match ext_name {
+        _ if ext_name == get_file_ext_name(coord::RecordType::Xqf) => coord::RecordType::Xqf,
+        _ if ext_name == get_file_ext_name(coord::RecordType::Bin) => coord::RecordType::Bin,
+        _ if ext_name == get_file_ext_name(coord::RecordType::PgnIccs) => {
+            coord::RecordType::PgnIccs
+        }
+        _ if ext_name == get_file_ext_name(coord::RecordType::PgnRc) => coord::RecordType::PgnRc,
+        _ if ext_name == get_file_ext_name(coord::RecordType::PgnZh) => coord::RecordType::PgnZh,
+        _ => coord::RecordType::Txt,
+    }
+}
+
 impl Manual {
     pub fn new() -> Self {
         Manual {
             info: BTreeMap::new(),
             manual_move: manual_move::ManualMove::new(),
+        }
+    }
+
+    pub fn from(file_name: &str) -> Self {
+        let record_type = get_record_type(file_name);
+        match record_type {
+            coord::RecordType::Xqf => Self::from_xqf(file_name),
+            coord::RecordType::Bin => Self::from_bin(file_name),
+            _ => Self::from_string(file_name, record_type),
         }
     }
 
@@ -213,11 +245,15 @@ impl Manual {
         self.info.insert(key, value);
     }
 
-    fn get_fen(&self) -> &str {
-        match self.info.get(&format!("{:?}", InfoKey::FEN)) {
+    fn get_fen(info: &BTreeMap<String, String>) -> &str {
+        match info.get(&format!("{:?}", InfoKey::FEN)) {
             Some(value) => value.split(" ").collect::<Vec<&str>>()[0],
             None => board::FEN,
         }
+    }
+
+    fn fen(&self) -> &str {
+        Self::get_fen(&self.info)
     }
 
     pub fn from_bin(file_name: &str) -> Self {
@@ -257,21 +293,40 @@ impl Manual {
         result
     }
 
-    pub fn get_info_string(&self) -> String {
-        let mut result = String::new();
-        for (key, value) in &self.info {
-            result.push_str(&format!("[{key}: {value}]\n"));
+    pub fn from_string(file_name: &str, record_type: coord::RecordType) -> Self {
+        let mut info = BTreeMap::new();
+        let mut manual_move = manual_move::ManualMove::new();
+
+        let file = File::open(file_name).unwrap();
+        let mut reader = BufReader::new(file);
+
+        let mut line = String::new();
+        let info_re = regex::Regex::new(r"\[(.+): ([\s\S]+?)\]").unwrap();
+        while reader.read_line(&mut line).unwrap() > 1 {
+            let caps = info_re.captures(&line).unwrap();
+            let key = caps.at(1).unwrap().to_string();
+            let value = caps.at(2).unwrap().to_string();
+            info.insert(key, value);
+
+            line.clear();
         }
 
-        result
+        let mut manual_move_str = String::new();
+        if reader.read_to_string(&mut manual_move_str).unwrap() > 0 {
+            let fen = Self::get_fen(&info);
+            manual_move = manual_move::ManualMove::from_string(fen, &manual_move_str, record_type);
+        }
+
+        Manual { info, manual_move }
     }
 
     pub fn to_string(&self, record_type: coord::RecordType) -> String {
-        format!(
-            "{}\n{}",
-            self.get_info_string(),
-            self.manual_move.to_string(record_type)
-        )
+        let mut remark = String::new();
+        for (key, value) in &self.info {
+            remark.push_str(&format!("[{key}: {value}]\n"));
+        }
+
+        format!("{}\n{}", remark, self.manual_move.to_string(record_type))
     }
 }
 
@@ -627,12 +682,16 @@ mod tests {
         ];
 
         fn get_file_path(file_name: &str, record_type: coord::RecordType) -> String {
-            format!("tests/output/{}.{:?}", file_name, record_type)
+            format!(
+                "tests/output/{}.{}",
+                file_name,
+                get_file_ext_name(record_type)
+            )
         }
-        
+
         let write_to_file = false; // true
         for (file_name, manual_string) in file_name_manual_strings {
-            let manual = Manual::from_xqf(&format!("tests/xqf/{file_name}.xqf"));
+            let manual = Manual::from(&format!("tests/xqf/{file_name}.xqf"));
             if write_to_file {
                 // 输出内容以备查看
                 for record_type in [
