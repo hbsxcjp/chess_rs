@@ -92,24 +92,6 @@ impl Move {
         utility::write_be_u32(output, self.after.borrow().len() as u32);
     }
 
-    pub fn get_from_string(
-        input: Vec<&str>,
-        record_type: coord::RecordType,
-        is_root: bool,
-    ) -> (CoordPair, String, usize) {
-        assert!(input.len() == 3);
-        let coordpair = if !is_root {
-            CoordPair::from_string(input[0], record_type)
-        } else {
-            CoordPair::new()
-        };
-
-        let remark = input[1].to_string();
-        let after_num = input[2].parse().unwrap();
-
-        (coordpair, remark, after_num)
-    }
-
     pub fn to_string(&self, record_type: coord::RecordType, board: &board::Board) -> String {
         let coordpair_string = if self.is_root() {
             String::new()

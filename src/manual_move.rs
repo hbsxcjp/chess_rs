@@ -188,32 +188,34 @@ impl ManualMove {
             coord::RecordType::PgnRc => r"\d{4}",
             coord::RecordType::PgnIccs => r"(?:[A-I]\d){2}",
             coord::RecordType::PgnZh => pgnzh_pattern.as_str(),
-            _ => r"(?:\(\d,\d\)){2}",
+            _ => r"(\(\d,\d\)){2}",
         };
         let remark_num_pattern = r"(?:\{([\s\S]+?)\})?(?:\((\d+)\))?\n";
         let amove_pattern = format!("({pgn_pattern}){remark_num_pattern}");
         let root_move_re = regex::Regex::new(&("^".to_string() + remark_num_pattern)).unwrap();
         let amove_re = regex::Regex::new(&amove_pattern).unwrap();
+        // println!("{}\n{}", manual_move_str, remark_num_pattern);
 
         let root_move = amove::Move::root();
         let root_caps = root_move_re.captures(manual_move_str).unwrap();
         *root_move.remark.borrow_mut() = root_caps.at(1).unwrap().to_string();
-        let root_after_num: usize = root_caps.at(2).unwrap().parse().unwrap();
 
-        let mut move_after_num_deque: VecDeque<(Rc<amove::Move>, usize)> = VecDeque::new();
-        move_after_num_deque.push_back((root_move.clone(), root_after_num));
-        let mut caps_iter = amove_re.captures_iter(manual_move_str);
-        while move_after_num_deque.len() > 0 {
-            let (before_move, before_after_num) = move_after_num_deque.pop_front().unwrap();
-            for _ in 0..before_after_num {
-                let caps = caps_iter.next().unwrap();
-                let coordpair = CoordPair::from_string(caps.at(1).unwrap(), record_type);
-                let remark = caps.at(2).unwrap().to_string();
-                let after_num: usize = caps.at(3).unwrap().parse().unwrap();
+        if let Ok(root_after_num) = root_caps.at(2).unwrap().parse() {
+            let mut move_after_num_deque: VecDeque<(Rc<amove::Move>, usize)> = VecDeque::new();
+            move_after_num_deque.push_back((root_move.clone(), root_after_num));
+            let mut caps_iter = amove_re.captures_iter(manual_move_str);
+            while move_after_num_deque.len() > 0 {
+                let (before_move, before_after_num) = move_after_num_deque.pop_front().unwrap();
+                for _ in 0..before_after_num {
+                    let caps = caps_iter.next().unwrap();
+                    let coordpair = CoordPair::from_string(caps.at(1).unwrap(), record_type);
+                    let remark = caps.at(2).unwrap().to_string();
+                    let after_num: usize = caps.at(3).unwrap().parse().unwrap();
 
-                let amove = before_move.append(coordpair, remark);
-                if after_num > 0 {
-                    move_after_num_deque.push_back((amove, after_num));
+                    let amove = before_move.append(coordpair, remark);
+                    if after_num > 0 {
+                        move_after_num_deque.push_back((amove, after_num));
+                    }
                 }
             }
         }

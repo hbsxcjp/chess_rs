@@ -14,23 +14,28 @@ pub enum RecordType {
     Xqf,
     Bin,
     Txt,
-    PgnRc,
     PgnIccs,
+    PgnRc,
     PgnZh,
 }
 
 impl RecordType {
-    pub fn get_ext_name(ext_type: RecordType) -> String {
-        format!("{:?}", ext_type).to_ascii_lowercase()
+    pub fn ext_name(&self) -> String {
+        format!("{:?}", self).to_ascii_lowercase()
     }
 
-    pub fn get_ext_type(ext_name: &str) -> RecordType {
+    pub fn get_record_type(file_name: &str) -> RecordType {
+        let ext_pos = file_name.rfind('.').unwrap_or(0);
+        let ext_name = &file_name[(ext_pos + 1)..];
+
         match ext_name {
-            _ if ext_name == Self::get_ext_name(Self::Xqf) => Self::Xqf,
-            _ if ext_name == Self::get_ext_name(Self::Txt) => Self::Txt,
-            _ if ext_name == Self::get_ext_name(Self::PgnRc) => Self::PgnRc,
-            _ if ext_name == Self::get_ext_name(Self::PgnIccs) => Self::PgnIccs,
-            _ => Self::PgnZh,
+            _ if ext_name == RecordType::Xqf.ext_name() => RecordType::Xqf,
+            _ if ext_name == RecordType::Bin.ext_name() => RecordType::Bin,
+            _ if ext_name == RecordType::Txt.ext_name() => RecordType::Txt,
+            _ if ext_name == RecordType::PgnIccs.ext_name() => RecordType::PgnIccs,
+            _ if ext_name == RecordType::PgnRc.ext_name() => RecordType::PgnRc,
+            _ if ext_name == RecordType::PgnZh.ext_name() => RecordType::PgnZh,
+            _ => RecordType::PgnZh,
         }
     }
 }
@@ -72,10 +77,6 @@ impl Coord {
         }
     }
 
-    pub fn index(&self) -> usize {
-        self.row * COLCOUNT + self.col
-    }
-
     pub fn from_rowcol(row: usize, col: usize) -> Option<Self> {
         if row < ROWCOUNT && col < COLCOUNT {
             Some(Coord { row, col })
@@ -85,6 +86,13 @@ impl Coord {
     }
 
     pub fn from_string(coord_str: &str, record_type: RecordType) -> Option<Self> {
+        if ((record_type == RecordType::PgnIccs || record_type == RecordType::PgnRc)
+            && coord_str.len() < 2)
+            || (record_type == RecordType::PgnZh && coord_str.len() < 4)
+        {
+            return None;
+        }
+
         match record_type {
             RecordType::PgnRc => Self::from_rowcol(
                 coord_str[0..1].parse().unwrap(),
@@ -102,8 +110,8 @@ impl Coord {
         }
     }
 
-    pub fn row_col(&self) -> (usize, usize) {
-        (self.row, self.col)
+    pub fn index(&self) -> usize {
+        self.row * COLCOUNT + self.col
     }
 
     pub fn to_change(&self, ct: ChangeType) -> Self {
@@ -124,11 +132,11 @@ impl Coord {
         }
     }
 
-    pub fn index_to_change(index: usize, ct: ChangeType) -> usize {
+    pub fn index_to_change(index: usize, ct: ChangeType) -> Option<usize> {
         if let Some(coord) = Coord::from_index(index) {
-            coord.to_change(ct).index()
+            Some(coord.to_change(ct).index())
         } else {
-            usize::MAX
+            None
         }
     }
 
@@ -150,16 +158,15 @@ impl Coord {
 
     pub fn to_string(&self, record_type: RecordType) -> String {
         match record_type {
-            RecordType::PgnRc => format!("{}{}", self.row, self.col),
+            RecordType::Txt => format!("({},{})", self.row, self.col),
             RecordType::PgnIccs => format!(
                 "{}{}",
                 char::from_u32('A' as u32 + self.col as u32).unwrap(),
                 self.row
             ),
+            RecordType::PgnRc => format!("{}{}", self.row, self.col),
 
-            // RecordType::Txt => format!("({},{})", self.row, self.col),
-            // _ => String::new(),
-            _ => format!("({},{})", self.row, self.col),
+            _ => String::new(),
         }
     }
 }

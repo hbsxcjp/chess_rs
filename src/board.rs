@@ -203,8 +203,8 @@ impl Board {
             }
             _ => {
                 let pieces = self.pieces;
-                for index in 0..pieces.len() {
-                    self.pieces[index] = pieces[Coord::index_to_change(index, ct)];
+                for (index, &piece) in pieces.iter().enumerate() {
+                    self.pieces[Coord::index_to_change(index, ct).unwrap()] = piece;
                 }
             }
         }
@@ -273,7 +273,8 @@ impl Board {
         let mut live_coords: Vec<Coord>;
         let mut kind = piece::kind_from_name(zh_chs[0]);
         if kind != piece::Kind::NoKind {
-            let from_col = Coord::get_side_col(Self::get_col(color, zh_chs[1]), color_is_bottom);
+            let col = Self::get_col(color, zh_chs[1]);
+            let from_col = Coord::get_side_col(col, color_is_bottom);
             live_coords = self.get_coords_from_color_kind_col(color, kind, from_col);
             assert!(live_coords.len() > 0);
 
@@ -553,9 +554,9 @@ mod tests {
             let mut board = Board::from(fen);
 
             assert_eq!(board.to_string(), to_string);
-            let name = fen.split_at(3).0;
-            std::fs::write(format!("tests/output/board_{name}.txt"), board.to_string())
-                .expect("Write Err.");
+            // let name = fen.split_at(3).0;
+            // std::fs::write(format!("tests/output/board_{name}.txt"), board.to_string())
+            //     .expect("Write Err.");
             // dbg!(board);
 
             for ct in [
