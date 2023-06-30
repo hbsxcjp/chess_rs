@@ -1,5 +1,10 @@
 #![allow(dead_code)]
 
+use std::error;
+use std::fmt;
+
+type Result<Coord> = std::result::Result<Coord, ParseCoordError>;
+
 pub const ROWCOUNT: usize = 10;
 pub const COLCOUNT: usize = 9;
 pub const SEATCOUNT: usize = ROWCOUNT * COLCOUNT;
@@ -8,6 +13,26 @@ pub const SIDECOUNT: usize = 2;
 pub const LEGSTATECOUNT: usize = 1 << 4;
 pub const COLSTATECOUNT: usize = 1 << ROWCOUNT;
 pub const ROWSTATECOUNT: usize = 1 << COLCOUNT;
+
+#[derive(Clone, Debug)]
+pub enum ParseCoordError {
+    RowOut,
+    ColOut,
+    IndexOut,
+    StringParse,
+}
+
+impl fmt::Display for ParseCoordError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "invalid value(kind: {:?}) to coord.", self)
+    }
+}
+
+impl error::Error for ParseCoordError {
+    fn source(&self) -> Option<&(dyn error::Error + 'static)> {
+        None
+    }
+}
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum RecordType {
@@ -66,47 +91,56 @@ impl Coord {
         Coord { row: 0, col: 0 }
     }
 
-    pub fn from_index(index: usize) -> Option<Self> {
+    pub fn from_index(index: usize) -> Result<Self> {
         if index < SEATCOUNT {
-            Some(Coord {
+            Ok(Coord {
                 row: index / COLCOUNT,
                 col: index % COLCOUNT,
             })
         } else {
-            None
+            Err(ParseCoordError::IndexOut)
         }
     }
 
-    pub fn from_rowcol(row: usize, col: usize) -> Option<Self> {
-        if row < ROWCOUNT && col < COLCOUNT {
-            Some(Coord { row, col })
+    pub fn from(row: usize, col: usize) -> Result<Self> {
+        if row >= ROWCOUNT {
+            Err(ParseCoordError::RowOut)
+        } else if col >= COLCOUNT {
+            Err(ParseCoordError::ColOut)
         } else {
-            None
+            Ok(Coord { row, col })
         }
     }
 
-    pub fn from_string(coord_str: &str, record_type: RecordType) -> Option<Self> {
+    pub fn from_string(coord_str: &str, record_type: RecordType) -> Result<Self> {
         if ((record_type == RecordType::PgnIccs || record_type == RecordType::PgnRc)
             && coord_str.len() < 2)
             || (record_type == RecordType::PgnZh && coord_str.len() < 4)
         {
-            return None;
+            return Err(ParseCoordError::StringParse);
         }
 
         match record_type {
-            RecordType::PgnRc => Self::from_rowcol(
-                coord_str[0..1].parse().unwrap(),
-                coord_str[1..2].parse().unwrap(),
-            ),
-            RecordType::PgnIccs => Self::from_rowcol(
+            RecordType::PgnRc => {
+                if let Ok(row) = coord_str[0..1].parse::<usize>() {
+                    if let Ok(col) = coord_str[1..2].parse::<usize>() {
+                        Self::from(row, col)
+                    } else {
+                        Err(ParseCoordError::StringParse)
+                    }
+                } else {
+                    Err(ParseCoordError::StringParse)
+                }
+            }
+            RecordType::PgnIccs => Self::from(
                 coord_str[1..2].parse().unwrap(),
                 coord_str.chars().next().unwrap() as usize - 'A' as usize,
             ),
-            RecordType::Txt => Self::from_rowcol(
+            RecordType::Txt => Self::from(
                 coord_str[1..2].parse().unwrap(),
                 coord_str[3..4].parse().unwrap(),
             ),
-            _ => None,
+            _ => Err(ParseCoordError::StringParse),
         }
     }
 
@@ -133,7 +167,7 @@ impl Coord {
     }
 
     pub fn index_to_change(index: usize, ct: ChangeType) -> Option<usize> {
-        if let Some(coord) = Coord::from_index(index) {
+        if let Ok(coord) = Coord::from_index(index) {
             Some(coord.to_change(ct).index())
         } else {
             None
@@ -187,8 +221,8 @@ impl CoordPair {
     }
 
     pub fn from_rowcol(frow: usize, fcol: usize, trow: usize, tcol: usize) -> Option<Self> {
-        if let Some(from_coord) = Coord::from_rowcol(frow, fcol) {
-            if let Some(to_coord) = Coord::from_rowcol(trow, tcol) {
+        if let Ok(from_coord) = Coord::from(frow, fcol) {
+            if let Ok(to_coord) = Coord::from(trow, tcol) {
                 return Some(CoordPair::from(from_coord, to_coord));
             }
         }

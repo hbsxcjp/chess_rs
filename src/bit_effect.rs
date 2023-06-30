@@ -5,7 +5,7 @@ use std::collections::HashMap;
 
 use crate::bit_constant;
 use crate::coord;
-use crate::piece;//::{self, COLORCOUNT, KINDCOUNT};
+use crate::piece; //::{self, COLORCOUNT, KINDCOUNT};
 
 #[derive(Debug)]
 pub struct Effect {
@@ -43,11 +43,13 @@ impl Effect {
     }
 
     pub fn to_string(&self) -> String {
-        let coord::Coord { row, col } =
-            coord::Coord::from_index(self.to_index).unwrap();
-        let score = self.score;
-        let fre = self.frequency;
-        format!("({},{})-{score}-{fre} ", row, col)
+        let coord = coord::Coord::from_index(self.to_index).unwrap();
+        format!(
+            "{}-{}-{} ",
+            coord.to_string(coord::RecordType::Txt),
+            self.score,
+            self.frequency
+        )
     }
 }
 
@@ -64,9 +66,8 @@ impl MoveEffect {
     }
 
     pub fn to_string(&self) -> String {
-        let coord::Coord { row, col } =
-            coord::Coord::from_index(self.from_index).unwrap();
-        let mut result = format!("[{},{}] => ", row, col);
+        let coord = coord::Coord::from_index(self.from_index).unwrap();
+        let mut result = format!("{} => ", coord.to_string(coord::RecordType::Txt));
         for effect in self.effects.iter() {
             result.push_str(&effect.to_string());
         }

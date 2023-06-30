@@ -129,8 +129,8 @@ mod tests {
     fn test_amove() {
         let root_move = Move::root();
 
-        let from_coord = coord::Coord::from_rowcol(0, 0).unwrap();
-        let to_coord = coord::Coord::from_rowcol(0, 2).unwrap();
+        let from_coord = coord::Coord::from(0, 0).unwrap();
+        let to_coord = coord::Coord::from(0, 2).unwrap();
         let coordpair = coord::CoordPair::from(from_coord, to_coord);
         let remark = String::from("Hello, move.");
         let amove = root_move.append(coordpair, remark);

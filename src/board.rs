@@ -331,7 +331,7 @@ impl Board {
             }
         }
 
-        let to_coord = Coord::from_rowcol(to_row, to_col).unwrap();
+        let to_coord = Coord::from(to_row, to_col).unwrap();
         CoordPair::from(from_coord, to_coord)
     }
 
