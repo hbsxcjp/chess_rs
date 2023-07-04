@@ -8,9 +8,9 @@ use crate::board;
 // use crate::bit_constant;
 // use std::borrow::Borrow;
 // use std::borrow::Borrow;
+// use crate::common;
 use crate::coord;
-use crate::coord::CoordPair;
-use crate::utility;
+// use crate::coord::CoordPair;
 // use std::borrow::BorrowMut;
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -18,45 +18,78 @@ use std::rc::Weak;
 
 #[derive(Debug)] //, Serialize, Deserialize
 pub struct Move {
-    pub before: Option<Weak<Move>>,
-    pub after: RefCell<Vec<Rc<Move>>>,
+    before: Option<Weak<Move>>,
+    after: RefCell<Option<Vec<Rc<Move>>>>,
 
     pub coordpair: coord::CoordPair,
-    pub remark: RefCell<String>,
+    remark: RefCell<Option<String>>,
 }
 
 impl Move {
     pub fn root() -> Rc<Self> {
         Rc::new(Move {
             before: None,
-            after: RefCell::new(vec![]),
+            after: RefCell::new(None),
 
             coordpair: coord::CoordPair::new(),
-            remark: RefCell::new(String::new()),
+            remark: RefCell::new(None),
         })
     }
 
     pub fn is_root(&self) -> bool {
-        match self.before {
-            Some(_) => false,
-            None => true,
+        self.before.is_none()
+    }
+
+    pub fn before(&self) -> Option<Rc<Self>> {
+        match &self.before {
+            None => None,
+            Some(before) => Some(before.upgrade().unwrap()),
+        }
+    }
+
+    pub fn after(&self) -> Vec<Rc<Self>> {
+        self.after.borrow().clone().unwrap_or(vec![])
+    }
+
+    pub fn from_to_index(&self) -> (usize, usize) {
+        (
+            self.coordpair.from_coord.index(),
+            self.coordpair.to_coord.index(),
+        )
+    }
+
+    pub fn remark(&self) -> String {
+        self.remark.borrow().clone().unwrap_or(String::new())
+    }
+
+    pub fn set_remark(&self, remark: String) {
+        if !remark.is_empty() {
+            *self.remark.borrow_mut() = Some(remark);
         }
     }
 
     pub fn append(self: &Rc<Self>, coordpair: coord::CoordPair, remark: String) -> Rc<Self> {
-        let amove = Rc::new(Move {
+        let amove = Rc::new(Self {
             before: Some(Rc::downgrade(self)),
-            after: RefCell::new(vec![]),
+            after: RefCell::new(None),
 
             coordpair,
-            remark: RefCell::new(remark),
+            remark: RefCell::new(if remark.is_empty() {
+                None
+            } else {
+                Some(remark)
+            }),
         });
 
-        self.after.borrow_mut().push(amove.clone());
+        self.after
+            .borrow_mut()
+            .get_or_insert(Vec::new())
+            .push(amove.clone());
+
         amove
     }
 
-    pub fn before_moves(self: &Rc<Self>) -> Vec<Rc<Move>> {
+    pub fn before_moves(self: &Rc<Self>) -> Vec<Rc<Self>> {
         let mut result = Vec::new();
         let mut amove = self.clone();
         while !amove.is_root() {
@@ -68,28 +101,6 @@ impl Move {
         result.reverse();
 
         result
-    }
-
-    pub fn get_from_input(input: &mut &[u8], is_root: bool) -> (CoordPair, String, usize) {
-        let coordpair = if !is_root {
-            utility::read_coordpair(input)
-        } else {
-            CoordPair::new()
-        };
-
-        let remark = utility::read_string(input);
-        let after_num = utility::read_be_u32(input) as usize;
-
-        (coordpair, remark, after_num)
-    }
-
-    pub fn to_output(&self, output: &mut Vec<u8>) {
-        if !self.is_root() {
-            utility::write_coordpair(output, &self.coordpair);
-        }
-
-        utility::write_string(output, self.remark.borrow().as_str());
-        utility::write_be_u32(output, self.after.borrow().len() as u32);
     }
 
     pub fn to_string(&self, record_type: coord::RecordType, board: &board::Board) -> String {
@@ -105,14 +116,14 @@ impl Move {
             }
         };
 
-        let remark = if self.remark.borrow().len() > 0 {
-            format!("{{{}}}", self.remark.borrow().clone())
-        } else {
-            String::new()
-        };
+        let mut remark = self.remark();
+        if !remark.is_empty() {
+            remark = format!("{{{}}}", remark);
+        }
 
-        let after_num = if self.after.borrow().len() > 0 {
-            format!("({})", self.after.borrow().len())
+        let num = self.after().len();
+        let after_num = if num > 0 {
+            format!("({})", num)
         } else {
             String::new()
         };

@@ -1,9 +1,5 @@
 #![allow(dead_code)]
-
-use std::error;
-use std::fmt;
-
-type Result<Coord> = std::result::Result<Coord, ParseCoordError>;
+use crate::common;
 
 pub const ROWCOUNT: usize = 10;
 pub const COLCOUNT: usize = 9;
@@ -13,26 +9,6 @@ pub const SIDECOUNT: usize = 2;
 pub const LEGSTATECOUNT: usize = 1 << 4;
 pub const COLSTATECOUNT: usize = 1 << ROWCOUNT;
 pub const ROWSTATECOUNT: usize = 1 << COLCOUNT;
-
-#[derive(Clone, Debug)]
-pub enum ParseCoordError {
-    RowOut,
-    ColOut,
-    IndexOut,
-    StringParse,
-}
-
-impl fmt::Display for ParseCoordError {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "invalid value(kind: {:?}) to coord.", self)
-    }
-}
-
-impl error::Error for ParseCoordError {
-    fn source(&self) -> Option<&(dyn error::Error + 'static)> {
-        None
-    }
-}
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum RecordType {
@@ -49,18 +25,20 @@ impl RecordType {
         format!("{:?}", self).to_ascii_lowercase()
     }
 
-    pub fn get_record_type(file_name: &str) -> RecordType {
-        let ext_pos = file_name.rfind('.').unwrap_or(0);
-        let ext_name = &file_name[(ext_pos + 1)..];
+    pub fn get_record_type(file_name: &str) -> common::Result<RecordType> {
+        let ext_pos = file_name.rfind('.').ok_or(common::ParseError::RecordTypeError)?;
+        let ext_name = file_name
+            .get(ext_pos + 1..)
+            .ok_or(common::ParseError::RecordTypeError)?;
 
         match ext_name {
-            _ if ext_name == RecordType::Xqf.ext_name() => RecordType::Xqf,
-            _ if ext_name == RecordType::Bin.ext_name() => RecordType::Bin,
-            _ if ext_name == RecordType::Txt.ext_name() => RecordType::Txt,
-            _ if ext_name == RecordType::PgnIccs.ext_name() => RecordType::PgnIccs,
-            _ if ext_name == RecordType::PgnRc.ext_name() => RecordType::PgnRc,
-            _ if ext_name == RecordType::PgnZh.ext_name() => RecordType::PgnZh,
-            _ => RecordType::PgnZh,
+            _ if ext_name == RecordType::Xqf.ext_name() => Ok(RecordType::Xqf),
+            _ if ext_name == RecordType::Bin.ext_name() => Ok(RecordType::Bin),
+            _ if ext_name == RecordType::Txt.ext_name() => Ok(RecordType::Txt),
+            _ if ext_name == RecordType::PgnIccs.ext_name() => Ok(RecordType::PgnIccs),
+            _ if ext_name == RecordType::PgnRc.ext_name() => Ok(RecordType::PgnRc),
+            _ if ext_name == RecordType::PgnZh.ext_name() => Ok(RecordType::PgnZh),
+            _ => Err(common::ParseError::RecordTypeError),
         }
     }
 }
@@ -91,56 +69,55 @@ impl Coord {
         Coord { row: 0, col: 0 }
     }
 
-    pub fn from_index(index: usize) -> Result<Self> {
-        if index < SEATCOUNT {
-            Ok(Coord {
-                row: index / COLCOUNT,
-                col: index % COLCOUNT,
-            })
-        } else {
-            Err(ParseCoordError::IndexOut)
-        }
-    }
-
-    pub fn from(row: usize, col: usize) -> Result<Self> {
+    pub fn from(row: usize, col: usize) -> common::Result<Self> {
         if row >= ROWCOUNT {
-            Err(ParseCoordError::RowOut)
+            Err(common::ParseError::RowOut)
         } else if col >= COLCOUNT {
-            Err(ParseCoordError::ColOut)
+            Err(common::ParseError::ColOut)
         } else {
             Ok(Coord { row, col })
         }
     }
 
-    pub fn from_string(coord_str: &str, record_type: RecordType) -> Result<Self> {
-        if ((record_type == RecordType::PgnIccs || record_type == RecordType::PgnRc)
-            && coord_str.len() < 2)
-            || (record_type == RecordType::PgnZh && coord_str.len() < 4)
-        {
-            return Err(ParseCoordError::StringParse);
-        }
+    pub fn from_index(index: usize) -> common::Result<Self> {
+        Self::from(index / COLCOUNT, index % COLCOUNT)
+    }
 
+    pub fn from_string(coord_str: &str, record_type: RecordType) -> common::Result<Self> {
         match record_type {
             RecordType::PgnRc => {
-                if let Ok(row) = coord_str[0..1].parse::<usize>() {
-                    if let Ok(col) = coord_str[1..2].parse::<usize>() {
-                        Self::from(row, col)
-                    } else {
-                        Err(ParseCoordError::StringParse)
-                    }
-                } else {
-                    Err(ParseCoordError::StringParse)
-                }
+                let row_col = coord_str
+                    .parse::<usize>()
+                    .map_err(|_| common::ParseError::StringParse)?;
+
+                Self::from(row_col / 10, row_col % 10)
             }
-            RecordType::PgnIccs => Self::from(
-                coord_str[1..2].parse().unwrap(),
-                coord_str.chars().next().unwrap() as usize - 'A' as usize,
-            ),
-            RecordType::Txt => Self::from(
-                coord_str[1..2].parse().unwrap(),
-                coord_str[3..4].parse().unwrap(),
-            ),
-            _ => Err(ParseCoordError::StringParse),
+            RecordType::PgnIccs => {
+                let row = coord_str
+                    .get(1..2)
+                    .ok_or(common::ParseError::StringParse)?
+                    .parse()
+                    .map_err(|_| common::ParseError::StringParse)?;
+                let col_ch = coord_str.chars().next().ok_or(common::ParseError::StringParse)?;
+                let col = col_ch as usize - 'A' as usize;
+
+                Self::from(row, col)
+            }
+            RecordType::Txt => {
+                let row = coord_str
+                    .get(1..2)
+                    .ok_or(common::ParseError::StringParse)?
+                    .parse()
+                    .map_err(|_| common::ParseError::StringParse)?;
+                let col = coord_str
+                    .get(3..4)
+                    .ok_or(common::ParseError::StringParse)?
+                    .parse()
+                    .map_err(|_| common::ParseError::StringParse)?;
+
+                Self::from(row, col)
+            }
+            _ => Err(common::ParseError::StringParse),
         }
     }
 
@@ -167,11 +144,9 @@ impl Coord {
     }
 
     pub fn index_to_change(index: usize, ct: ChangeType) -> Option<usize> {
-        if let Ok(coord) = Coord::from_index(index) {
-            Some(coord.to_change(ct).index())
-        } else {
-            None
-        }
+        let coord = Coord::from_index(index).ok()?;
+
+        Some(coord.to_change(ct).index())
     }
 
     pub fn get_side_col(col: usize, color_is_bottom: bool) -> usize {
@@ -220,22 +195,19 @@ impl CoordPair {
         }
     }
 
-    pub fn from_rowcol(frow: usize, fcol: usize, trow: usize, tcol: usize) -> Option<Self> {
-        if let Ok(from_coord) = Coord::from(frow, fcol) {
-            if let Ok(to_coord) = Coord::from(trow, tcol) {
-                return Some(CoordPair::from(from_coord, to_coord));
-            }
-        }
+    pub fn from_row_col(frow: usize, fcol: usize, trow: usize, tcol: usize) -> common::Result<Self> {
+        let from_coord = Coord::from(frow, fcol)?;
+        let to_coord = Coord::from(trow, tcol)?;
 
-        None
+        Ok(CoordPair::from(from_coord, to_coord))
     }
 
-    pub fn from_string(coordpair_str: &str, record_type: RecordType) -> Self {
+    pub fn from_string(coordpair_str: &str, record_type: RecordType) -> common::Result<Self> {
         let mid = coordpair_str.len() / 2;
-        Self::from(
-            Coord::from_string(&coordpair_str[..mid], record_type).unwrap_or(Coord::new()),
-            Coord::from_string(&coordpair_str[mid..], record_type).unwrap_or(Coord::new()),
-        )
+        let from_coord = Coord::from_string(&coordpair_str[..mid], record_type)?;
+        let to_coord = Coord::from_string(&coordpair_str[mid..], record_type)?;
+
+        Ok(CoordPair::from(from_coord, to_coord))
     }
 
     pub fn row_col(&self) -> (usize, usize, usize, usize) {

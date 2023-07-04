@@ -7,7 +7,7 @@ pub mod coord;
 pub mod manual;
 mod manual_move;
 mod piece;
-mod utility;
+mod common;
 
 // pub use crate::piece;
 

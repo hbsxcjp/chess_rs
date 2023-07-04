@@ -110,10 +110,6 @@ pub fn fen_to_pieces(fen: &str) -> Pieces {
     piece_chars_to_pieces(&fen_to_piece_chars(fen))
 }
 
-fn pieces_to_fen(pieces: &Pieces) -> String {
-    piece_chars_to_fen(&pieces_to_piece_chars(pieces))
-}
-
 pub fn fen_to_change(fen: &str, ct: ChangeType) -> String {
     let get_line_vec = |reverse: bool| {
         let mut line_vec: Vec<&str> = fen.split(FENSPLITCHAR).collect();
@@ -172,7 +168,7 @@ impl Board {
     }
 
     pub fn get_fen(&self) -> String {
-        pieces_to_fen(&self.pieces)
+        piece_chars_to_fen(&pieces_to_piece_chars(&self.pieces))
     }
 
     pub fn bit_board(&self) -> bit_board::BitBoard {
@@ -182,8 +178,7 @@ impl Board {
     pub fn to_move(&self, amove: &Rc<amove::Move>) -> Self {
         let mut pieces = self.pieces;
         for bmove in amove.before_moves() {
-            let from_index = bmove.coordpair.from_coord.index();
-            let to_index = bmove.coordpair.to_coord.index();
+            let (from_index, to_index) = bmove.from_to_index();
             pieces[to_index] = pieces[from_index];
             pieces[from_index] = piece::Piece::None;
         }

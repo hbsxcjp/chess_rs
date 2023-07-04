@@ -1,7 +1,7 @@
 #![allow(dead_code)]
 
 use crate::coord::CoordPair;
-use crate::{amove, coord};
+use crate::{amove, common, coord};
 use encoding::all::GBK;
 use encoding::{DecoderTrap, Encoding};
 use std::collections::VecDeque;
@@ -17,20 +17,20 @@ use std::rc::Rc;
 
 #[derive(Debug)]
 pub struct ManualMove {
-    pub board: board::Board,
-    pub root_move: Rc<amove::Move>,
+    board: board::Board,
+    root_move: Rc<amove::Move>,
 }
 
 impl ManualMove {
+    pub fn new() -> Self {
+        ManualMove::from(board::FEN, amove::Move::root())
+    }
+
     fn from(fen: &str, root_move: Rc<amove::Move>) -> Self {
         ManualMove {
             board: board::Board::from(fen),
             root_move,
         }
-    }
-
-    pub fn new() -> Self {
-        ManualMove::from(board::FEN, amove::Move::root())
     }
 
     pub fn from_xqf(
@@ -94,16 +94,14 @@ impl ManualMove {
         let mut pos: usize = 1024;
         let root_move = amove::Move::root();
         let (data, remark) = get_data_remark(&mut pos);
-        *root_move.remark.borrow_mut() = remark;
+        root_move.set_remark(remark);
 
         if data[2] & 0x80 != 0 {
             let mut before_moves = vec![root_move.clone()];
             let mut before_move = root_move.clone();
             let mut is_other = false;
             // 当前棋子非根，或为根尚无后续棋子/当前棋子为根，且有后继棋子时，表明深度搜索已经回退到根，已经没有后续棋子了
-            while pos < input.len()
-                && (!before_move.is_root() || before_move.after.borrow().len() == 0)
-            {
+            while pos < input.len() && (!before_move.is_root() || before_move.after().is_empty()) {
                 let (data, remark) = get_data_remark(&mut pos);
                 //# 一步棋的起点和终点有简单的加密计算，读入时需要还原
                 let fcolrow = __sub(data[0], (0x18 + keyxyf as usize) as u8);
@@ -116,7 +114,7 @@ impl ManualMove {
                 let fcol = (fcolrow / 10) as usize;
                 let trow = (10 - 1 - tcolrow % 10) as usize;
                 let tcol = (tcolrow / 10) as usize;
-                let coord_pair = CoordPair::from_rowcol(frow, fcol, trow, tcol).unwrap();
+                let coord_pair = CoordPair::from_row_col(frow, fcol, trow, tcol).unwrap();
                 let tag = data[2];
                 let has_next = (tag & 0x80) != 0;
                 let has_other = (tag & 0x40) != 0;
@@ -125,8 +123,8 @@ impl ManualMove {
                 }
 
                 if is_other {
-                    if let Some(before) = &before_move.before {
-                        before_move = before.upgrade().unwrap();
+                    if let Some(before) = before_move.before() {
+                        before_move = before;
                     }
                 }
 
@@ -153,15 +151,19 @@ impl ManualMove {
 
     pub fn from_bin(fen: &str, input: &mut &[u8]) -> Self {
         let root_move = amove::Move::root();
-        let (_, root_remark, root_after_num) = amove::Move::get_from_input(input, true);
-        *root_move.remark.borrow_mut() = root_remark;
+        let remark = common::read_string(input);
+        let after_num = common::read_be_u32(input) as usize;
+        root_move.set_remark(remark);
 
         let mut move_after_num_deque: VecDeque<(Rc<amove::Move>, usize)> = VecDeque::new();
-        move_after_num_deque.push_back((root_move.clone(), root_after_num));
+        move_after_num_deque.push_back((root_move.clone(), after_num));
         while move_after_num_deque.len() > 0 {
             let (before_move, before_after_num) = move_after_num_deque.pop_front().unwrap();
             for _ in 0..before_after_num {
-                let (coordpair, remark, after_num) = amove::Move::get_from_input(input, false);
+                let coordpair = common::read_coordpair(input);
+                let remark = common::read_string(input);
+                let after_num = common::read_be_u32(input) as usize;
+
                 let amove = before_move.append(coordpair, remark);
                 if after_num > 0 {
                     move_after_num_deque.push_back((amove, after_num));
@@ -174,21 +176,30 @@ impl ManualMove {
 
     pub fn get_bytes(&self) -> Vec<u8> {
         let mut result = Vec::new();
-        self.root_move.to_output(&mut result);
+
+        common::write_string(&mut result, &self.root_move.remark());
+        common::write_be_u32(&mut result, self.root_move.after().len() as u32);
         for amove in self.get_all_after_moves() {
-            amove.to_output(&mut result);
+            common::write_coordpair(&mut result, &amove.coordpair);
+
+            common::write_string(&mut result, &amove.remark());
+            common::write_be_u32(&mut result, amove.after().len() as u32);
         }
 
         result
     }
 
-    pub fn from_string(fen: &str, manual_move_str: &str, record_type: coord::RecordType) -> Self {
+    pub fn from_string(
+        fen: &str,
+        manual_move_str: &str,
+        record_type: coord::RecordType,
+    ) -> common::Result<Self> {
         let pgnzh_pattern = board::Board::get_pgnzh_pattern();
         let pgn_pattern = match record_type {
             coord::RecordType::PgnRc => r"\d{4}",
             coord::RecordType::PgnIccs => r"(?:[A-I]\d){2}",
             coord::RecordType::PgnZh => pgnzh_pattern.as_str(),
-            _ => r"(\(\d,\d\)){2}",
+            _ => r"(?:\(\d,\d\)){2}",
         };
         let remark_num_pattern = r"(?:\{([\s\S]+?)\})?(?:\((\d+)\))?\n";
         let amove_pattern = format!("({pgn_pattern}){remark_num_pattern}");
@@ -197,36 +208,52 @@ impl ManualMove {
         // println!("{}\n{}", manual_move_str, remark_num_pattern);
 
         let root_move = amove::Move::root();
-        let root_caps = root_move_re.captures(manual_move_str).unwrap();
-        *root_move.remark.borrow_mut() = root_caps.at(1).unwrap().to_string();
+        if let Some(root_caps) = root_move_re.captures(manual_move_str) {
+            if let Some(remark) = root_caps.at(1) {
+                root_move.set_remark(remark.to_string());
+            }
 
-        if let Ok(root_after_num) = root_caps.at(2).unwrap().parse() {
-            let mut move_after_num_deque: VecDeque<(Rc<amove::Move>, usize)> = VecDeque::new();
-            move_after_num_deque.push_back((root_move.clone(), root_after_num));
-            let mut caps_iter = amove_re.captures_iter(manual_move_str);
-            while move_after_num_deque.len() > 0 {
-                let (before_move, before_after_num) = move_after_num_deque.pop_front().unwrap();
-                for _ in 0..before_after_num {
-                    let caps = caps_iter.next().unwrap();
-                    let coordpair = CoordPair::from_string(caps.at(1).unwrap(), record_type);
-                    let remark = caps.at(2).unwrap().to_string();
-                    let after_num: usize = caps.at(3).unwrap().parse().unwrap();
+            if let Some(after_num_str) = root_caps.at(2) {
+                if let Ok(root_after_num) = after_num_str.parse() {
+                    let mut move_after_num_deque: VecDeque<(Rc<amove::Move>, usize)> =
+                        VecDeque::new();
+                    move_after_num_deque.push_back((root_move.clone(), root_after_num));
+                    let mut caps_iter = amove_re.captures_iter(manual_move_str);
+                    while move_after_num_deque.len() > 0 {
+                        let (before_move, before_after_num) =
+                            move_after_num_deque.pop_front().unwrap();
+                        for _ in 0..before_after_num {
+                            let caps = caps_iter.next().ok_or(common::ParseError::StringParse)?;
+                            let coordpair =
+                                CoordPair::from_string(caps.at(1).unwrap(), record_type)?;
+                            let remark = if let Some(remark) = caps.at(2) {
+                                remark.to_string()
+                            } else {
+                                String::new()
+                            };
+                            let after_num: usize = if let Some(after_num_str) = caps.at(3) {
+                                after_num_str.parse().unwrap_or(0)
+                            } else {
+                                0
+                            };
 
-                    let amove = before_move.append(coordpair, remark);
-                    if after_num > 0 {
-                        move_after_num_deque.push_back((amove, after_num));
+                            let amove = before_move.append(coordpair, remark);
+                            if after_num > 0 {
+                                move_after_num_deque.push_back((amove, after_num));
+                            }
+                        }
                     }
                 }
             }
         }
 
-        ManualMove::from(fen, root_move)
+        Ok(ManualMove::from(fen, root_move))
     }
 
     fn get_all_after_moves(&self) -> Vec<Rc<amove::Move>> {
         fn enqueue_after(move_deque: &mut VecDeque<Rc<amove::Move>>, amove: &Rc<amove::Move>) {
-            for after_move in amove.after.borrow().iter() {
-                move_deque.push_back(after_move.clone());
+            for bmove in amove.after() {
+                move_deque.push_back(bmove.clone());
             }
         }
 

@@ -9,27 +9,29 @@ use crate::piece; //::{self, COLORCOUNT, KINDCOUNT};
 
 #[derive(Debug)]
 pub struct Effect {
-    pub to_index: usize,
+    to_index: usize,
 
-    pub score: i32,
-    pub frequency: i32,
+    score: i32,
+    frequency: i32,
 }
 
 #[derive(Debug)]
 pub struct MoveEffect {
     pub from_index: usize,
-    pub effects: Vec<Effect>,
+
+    effects: Vec<Effect>,
 }
 
 #[derive(Debug)]
 pub struct HashlockMoveEffect {
-    pub hashlock: u64,
-    pub move_effects: Vec<MoveEffect>,
+    hashlock: u64,
+
+    move_effects: Vec<MoveEffect>,
 }
 
 #[derive(Debug)]
 pub struct HistoryMoveEffect {
-    pub history: HashMap<u64, HashlockMoveEffect>,
+    history: HashMap<u64, HashlockMoveEffect>,
 }
 
 // 后期根据需要扩展

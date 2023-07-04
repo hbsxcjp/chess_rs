@@ -1,5 +1,31 @@
 #![allow(dead_code)]
 
+use std::error;
+use std::fmt;
+
+pub type Result<T> = std::result::Result<T, ParseError>;
+
+#[derive(Clone, Debug)]
+pub enum ParseError {
+    RowOut,
+    ColOut,
+    IndexOut,
+    StringParse,
+    RecordTypeError,
+}
+
+impl fmt::Display for ParseError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "invalid value(kind: {:?}) to coord.", self)
+    }
+}
+
+impl error::Error for ParseError {
+    fn source(&self) -> Option<&(dyn error::Error + 'static)> {
+        None
+    }
+}
+
 // use std::convert::TryInto;
 use crate::coord::CoordPair;
 
@@ -27,7 +53,7 @@ pub fn write_string(output: &mut Vec<u8>, string: &str) {
 pub fn read_coordpair(input: &mut &[u8]) -> CoordPair {
     let bytes = read_bytes(input, 4);
 
-    CoordPair::from_rowcol(
+    CoordPair::from_row_col(
         bytes[0] as usize,
         bytes[1] as usize,
         bytes[2] as usize,

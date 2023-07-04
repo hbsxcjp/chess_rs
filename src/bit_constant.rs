@@ -1,23 +1,22 @@
 #![allow(dead_code)]
 
 use crate::coord::{
-    self, COLCOUNT, COLSTATECOUNT, LEGSTATECOUNT, ROWCOUNT, ROWSTATECOUNT, SEATCOUNT, SIDECOUNT,
+    COLCOUNT, COLSTATECOUNT, LEGSTATECOUNT, ROWCOUNT, ROWSTATECOUNT, SEATCOUNT, SIDECOUNT,
 };
 use crate::piece::{self, COLORCOUNT, KINDCOUNT};
 // use rand::Rng;
 
-pub type ZobristSeatArray = [[[u64; SEATCOUNT]; KINDCOUNT]; COLORCOUNT];
-pub type ZobristSideArray = [u64; COLORCOUNT];
+type ZobristSeatArray = [[[u64; SEATCOUNT]; KINDCOUNT]; COLORCOUNT];
+type ZobristSideArray = [u64; COLORCOUNT];
 
 pub type BitAtom = u128;
-pub type IndexArray = [usize; SEATCOUNT];
-pub type CoordArray = [coord::Coord; SEATCOUNT];
-pub type SideBoardArray = [BitAtom; SIDECOUNT];
-pub type SeatBoardArray = [BitAtom; SEATCOUNT];
-pub type LegStateSeatBoardArray = [[BitAtom; SEATCOUNT]; LEGSTATECOUNT];
-pub type RowStateSeatBoardArray = [[BitAtom; ROWSTATECOUNT]; COLCOUNT];
-pub type ColStateSeatBoardArray = [[BitAtom; COLSTATECOUNT]; ROWCOUNT];
-pub type SideSeatBoardArray = [[BitAtom; SEATCOUNT]; SIDECOUNT];
+type IndexArray = [usize; SEATCOUNT];
+type SideBoardArray = [BitAtom; SIDECOUNT];
+type SeatBoardArray = [BitAtom; SEATCOUNT];
+type LegStateSeatBoardArray = [[BitAtom; SEATCOUNT]; LEGSTATECOUNT];
+type RowStateSeatBoardArray = [[BitAtom; ROWSTATECOUNT]; COLCOUNT];
+type ColStateSeatBoardArray = [[BitAtom; COLSTATECOUNT]; ROWCOUNT];
+type SideSeatBoardArray = [[BitAtom; SEATCOUNT]; SIDECOUNT];
 
 // coord
 // const COORDS: CoordArray = create_coord_array();
@@ -35,28 +34,28 @@ pub const MASK: SeatBoardArray = create_mask(false);
 pub const ROTATEMASK: SeatBoardArray = create_mask(true);
 
 // put 根据所处的位置选取可放置的位置[is_bottom:0-1]
-pub const KINGPUT: SideBoardArray = create_kingput();
-pub const ADVISORPUT: SideBoardArray = create_advisorput();
-pub const BISHOPPUT: SideBoardArray = create_bishopput();
-pub const KNIGHTROOKCANNONPUT: BitAtom = 0x3f_fff_fff_fff_fff_fff_fff_fffu128;
-pub const PAWNPUT: SideBoardArray = create_pawnput();
+const KINGPUT: SideBoardArray = create_kingput();
+const ADVISORPUT: SideBoardArray = create_advisorput();
+const BISHOPPUT: SideBoardArray = create_bishopput();
+const KNIGHTROOKCANNONPUT: BitAtom = 0x3f_fff_fff_fff_fff_fff_fff_fffu128;
+const PAWNPUT: SideBoardArray = create_pawnput();
 
 // move 帅仕根据所处的位置选取可移动位棋盘[index:0-89]
 pub const KINGMOVE: SeatBoardArray = create_kingmove();
 pub const ADVISORMOVE: SeatBoardArray = create_advisormove();
 
 // 马相根据憋马腿或田心组成的四个位置状态选取可移动位棋盘[state:0-0XF][index:0-89]
-pub const BISHOPMOVE: LegStateSeatBoardArray = create_bishopmove();
-pub const KNIGHTMOVE: LegStateSeatBoardArray = create_knightmove();
+const BISHOPMOVE: LegStateSeatBoardArray = create_bishopmove();
+const KNIGHTMOVE: LegStateSeatBoardArray = create_knightmove();
 
 // 车炮根据每行和每列的位置状态选取可移动位棋盘[state:0-0x1FF,0X3FF][index:0-89]
-pub const ROOKROWMOVE: RowStateSeatBoardArray = create_rookcannon_row_move(false);
-pub const ROOKCOLMOVE: ColStateSeatBoardArray = create_rookcannon_col_move(false);
-pub const CANNONROWMOVE: RowStateSeatBoardArray = create_rookcannon_row_move(true);
-pub const CANNONCOLMOVE: ColStateSeatBoardArray = create_rookcannon_col_move(true);
+const ROOKROWMOVE: RowStateSeatBoardArray = create_rookcannon_row_move(false);
+const ROOKCOLMOVE: ColStateSeatBoardArray = create_rookcannon_col_move(false);
+const CANNONROWMOVE: RowStateSeatBoardArray = create_rookcannon_row_move(true);
+const CANNONCOLMOVE: ColStateSeatBoardArray = create_rookcannon_col_move(true);
 
 // 兵根据本方处于上或下的二个位置状态选取可移动位棋盘[is_bottom:0-1][index:0-89]
-pub const PAWNMOVE: SideSeatBoardArray = create_pawnmove();
+const PAWNMOVE: SideSeatBoardArray = create_pawnmove();
 
 #[macro_export]
 macro_rules! to_rowcol {
