@@ -4,7 +4,7 @@
 // use serde_derive::Serialize;
 
 use crate::board;
-// use crate::bit_board;
+use crate::piece;
 // use crate::bit_constant;
 // use std::borrow::Borrow;
 // use std::borrow::Borrow;
@@ -89,18 +89,26 @@ impl Move {
         amove
     }
 
-    pub fn before_moves(self: &Rc<Self>) -> Vec<Rc<Self>> {
-        let mut result = Vec::new();
+    pub fn to_pieces(self: &Rc<Self>, pieces: &board::Pieces) -> board::Pieces {
+        let mut before_moves = Vec::new();
         let mut amove = self.clone();
         while !amove.is_root() {
-            result.push(amove.clone());
+            before_moves.push(amove.clone());
+
             if let Some(before) = &amove.before {
                 amove = before.upgrade().unwrap();
             }
         }
-        result.reverse();
+        before_moves.reverse();
 
-        result
+        let mut new_pieces = pieces.clone();
+        for bmove in before_moves {
+            let (from_index, to_index) = bmove.from_to_index();
+            new_pieces[to_index] = new_pieces[from_index];
+            new_pieces[from_index] = piece::Piece::None;
+        }
+
+        new_pieces
     }
 
     pub fn to_string(&self, record_type: coord::RecordType, board: &board::Board) -> String {
