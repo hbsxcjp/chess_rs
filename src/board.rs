@@ -176,7 +176,12 @@ impl Board {
     }
 
     pub fn to_move(&self, amove: &Rc<amove::Move>) -> Self {
-        let pieces = amove.to_pieces(&self.pieces);
+        let mut pieces = self.pieces;
+        for (from_index, to_index) in amove.from_to_indexs() {
+            pieces[to_index] = pieces[from_index];
+            pieces[from_index] = piece::Piece::None;
+        }
+
         Board { pieces }
     }
 

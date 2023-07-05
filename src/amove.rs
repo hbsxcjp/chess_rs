@@ -4,7 +4,7 @@
 // use serde_derive::Serialize;
 
 use crate::board;
-use crate::piece;
+// use crate::piece;
 // use crate::bit_constant;
 // use std::borrow::Borrow;
 // use std::borrow::Borrow;
@@ -51,13 +51,6 @@ impl Move {
         self.after.borrow().clone().unwrap_or(vec![])
     }
 
-    pub fn from_to_index(&self) -> (usize, usize) {
-        (
-            self.coordpair.from_coord.index(),
-            self.coordpair.to_coord.index(),
-        )
-    }
-
     pub fn remark(&self) -> String {
         self.remark.borrow().clone().unwrap_or(String::new())
     }
@@ -89,26 +82,16 @@ impl Move {
         amove
     }
 
-    pub fn to_pieces(self: &Rc<Self>, pieces: &board::Pieces) -> board::Pieces {
-        let mut before_moves = Vec::new();
+    pub fn from_to_indexs(self: &Rc<Self>) -> Vec<(usize, usize)> {
+        let mut from_to_indexs = Vec::new();
         let mut amove = self.clone();
         while !amove.is_root() {
-            before_moves.push(amove.clone());
-
-            if let Some(before) = &amove.before {
-                amove = before.upgrade().unwrap();
-            }
+            from_to_indexs.push(amove.coordpair.from_to_index());
+            amove = amove.before.as_ref().unwrap().upgrade().unwrap();
         }
-        before_moves.reverse();
+        from_to_indexs.reverse();
 
-        let mut new_pieces = pieces.clone();
-        for bmove in before_moves {
-            let (from_index, to_index) = bmove.from_to_index();
-            new_pieces[to_index] = new_pieces[from_index];
-            new_pieces[from_index] = piece::Piece::None;
-        }
-
-        new_pieces
+        from_to_indexs
     }
 
     pub fn to_string(&self, record_type: coord::RecordType, board: &board::Board) -> String {

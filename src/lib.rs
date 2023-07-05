@@ -1,7 +1,7 @@
 mod amove;
 mod bit_board;
 mod bit_constant;
-mod bit_effect;
+mod bit_possible;
 mod board;
 pub mod coord;
 pub mod manual;

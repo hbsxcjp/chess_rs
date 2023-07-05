@@ -2,15 +2,19 @@
 #![allow(unused_imports)]
 
 use crate::bit_constant;
-use crate::bit_effect;
+use crate::bit_possible;
 use crate::board;
 use crate::coord::{
     self, COLCOUNT, COLSTATECOUNT, LEGSTATECOUNT, ROWCOUNT, ROWSTATECOUNT, SEATCOUNT, SIDECOUNT,
 };
 use crate::piece::{self, COLORCOUNT, KINDCOUNT};
 
-type SetEffect =
-    fn(&BitBoard, move_effect: &mut bit_effect::MoveEffect, to_index: usize, eat_kind: piece::Kind);
+type SetEffect = fn(
+    &BitBoard,
+    per_possible: &mut bit_possible::PerPossible,
+    to_index: usize,
+    eat_kind: piece::Kind,
+);
 
 #[derive(Debug)]
 pub struct BitBoard {
@@ -24,8 +28,8 @@ pub struct BitBoard {
     rotate_all_pieces: bit_constant::BitAtom,
 
     // 哈希局面数据
-    hashkey: u64,
-    hashlock: u64,
+    key: u64,
+    lock: u64,
     // private static HistoryRecord? historyRecord;
 }
 
@@ -40,8 +44,8 @@ impl BitBoard {
             all_pieces: 0,
             rotate_all_pieces: 0,
 
-            hashkey: 0,
-            hashlock: 0,
+            key: 0,
+            lock: 0,
         };
 
         for (index, piece) in pieces.iter().enumerate() {
@@ -55,20 +59,20 @@ impl BitBoard {
                 bit_board.all_pieces |= bit_constant::MASK[index];
                 bit_board.rotate_all_pieces |= bit_constant::ROTATEMASK[index];
 
-                bit_board.hashkey ^= bit_constant::ZOBRISTKEY[color_i][kind_i][index];
-                bit_board.hashlock ^= bit_constant::ZOBRISTLOCK[color_i][kind_i][index];
+                bit_board.key ^= bit_constant::ZOBRISTKEY[color_i][kind_i][index];
+                bit_board.lock ^= bit_constant::ZOBRISTLOCK[color_i][kind_i][index];
             }
         }
 
         bit_board
     }
 
-    pub fn get_hash_key(&self, color: piece::Color) -> u64 {
-        self.hashkey ^ bit_constant::COLORZOBRISTKEY[color as usize]
+    pub fn get_key(&self, color: piece::Color) -> u64 {
+        self.key ^ bit_constant::COLORZOBRISTKEY[color as usize]
     }
 
-    pub fn get_hash_lock(&self, color: piece::Color) -> u64 {
-        self.hashlock ^ bit_constant::COLORZOBRISTLOCK[color as usize]
+    pub fn get_lock(&self, color: piece::Color) -> u64 {
+        self.lock ^ bit_constant::COLORZOBRISTLOCK[color as usize]
     }
 
     fn get_color(&self, index: usize) -> piece::Color {
@@ -210,9 +214,9 @@ impl BitBoard {
         eat_kind
     }
 
-    fn set_effect_killed(
+    fn set_possible_killed(
         &self,
-        move_effect: &mut bit_effect::MoveEffect,
+        per_possible: &mut bit_possible::PerPossible,
         to_index: usize,
         eat_kind: piece::Kind,
     ) {
@@ -221,93 +225,74 @@ impl BitBoard {
         let score = if is_killed { -1 } else { 0 };
         // 扩展，增加其他功能
 
-        move_effect.add(to_index, score, 0);
+        per_possible.add(to_index, score, 0);
     }
 
     // 执行某一着后的效果(委托函数可叠加)
-    fn domove_set_effect_undo_move(
+    fn domove_set_possible_undo_move(
         &mut self,
-        move_effect: &mut bit_effect::MoveEffect,
+        per_possible: &mut bit_possible::PerPossible,
         to_index: usize,
-        set_effect: SetEffect,
+        set_possible: SetEffect,
     ) {
-        let eat_kind = self.do_move(move_effect.from_index, to_index, false, piece::Kind::NoKind);
+        let eat_kind = self.do_move(
+            per_possible.from_index,
+            to_index,
+            false,
+            piece::Kind::NoKind,
+        );
 
-        set_effect(self, move_effect, to_index, eat_kind);
+        set_possible(self, per_possible, to_index, eat_kind);
 
-        self.do_move(move_effect.from_index, to_index, true, eat_kind);
+        self.do_move(per_possible.from_index, to_index, true, eat_kind);
     }
 
-    fn get_effect_from_index(&mut self, from_index: usize) -> bit_effect::MoveEffect {
-        let mut move_effect = bit_effect::MoveEffect::new(from_index);
+    fn get_possible_from_index(&mut self, from_index: usize) -> bit_possible::PerPossible {
+        let mut per_possible = bit_possible::PerPossible::new(from_index);
         for to_index in bit_constant::get_indexs_from_bitatom(self.get_move_from_index(from_index))
         {
-            self.domove_set_effect_undo_move(&mut move_effect, to_index, Self::set_effect_killed);
+            self.domove_set_possible_undo_move(
+                &mut per_possible,
+                to_index,
+                Self::set_possible_killed,
+            );
         }
 
-        move_effect
+        per_possible
     }
 
-    fn get_effects_from_bitatom(
+    fn get_possibles_from_bitatom(
         &mut self,
         bit_atom: bit_constant::BitAtom,
-    ) -> Vec<bit_effect::MoveEffect> {
-        let mut effects: Vec<bit_effect::MoveEffect> = Vec::new();
+    ) -> Vec<bit_possible::PerPossible> {
+        let mut possibles: Vec<bit_possible::PerPossible> = Vec::new();
         for from_index in bit_constant::get_indexs_from_bitatom(bit_atom) {
-            effects.push(self.get_effect_from_index(from_index));
+            possibles.push(self.get_possible_from_index(from_index));
         }
 
-        effects
+        possibles
     }
 
     // kind == piece::Kind::NoKind，取全部种类棋子
-    fn get_effects_from_color_kind(
+    fn get_possibles_from_color_kind(
         &mut self,
         color: piece::Color,
         kind: piece::Kind,
-    ) -> Vec<bit_effect::MoveEffect> {
-        self.get_effects_from_bitatom(match kind {
+    ) -> Vec<bit_possible::PerPossible> {
+        self.get_possibles_from_bitatom(match kind {
             piece::Kind::NoKind => self.color_pieces[color as usize],
             _ => self.color_kind_pieces[color as usize][kind as usize],
         })
     }
 
-    pub fn get_effects_from_color(&mut self, color: piece::Color) -> Vec<bit_effect::MoveEffect> {
-        self.get_effects_from_color_kind(color, piece::Kind::NoKind)
+    pub fn get_possibles_from_color(
+        &mut self,
+        color: piece::Color,
+    ) -> Vec<bit_possible::PerPossible> {
+        self.get_possibles_from_color_kind(color, piece::Kind::NoKind)
     }
 
-    // 可变借用
-    pub fn to_moves_string(&mut self) -> String {
-        let mut result = format!("moves_string:\n");
-        for color in [piece::Color::Red, piece::Color::Black] {
-            let mut moves = Vec::new();
-            for index in bit_constant::get_indexs_from_bitatom(self.color_pieces[color as usize]) {
-                moves.push(self.get_move_from_index(index));
-            }
-
-            result.push_str(&bit_constant::get_bitatom_array_string(&moves, false));
-        }
-
-        result
-    }
-
-    // 可变借用
-    pub fn to_effects_string(&mut self) -> String {
-        let mut result = format!("effect_string:\n");
-        for color in [piece::Color::Red, piece::Color::Black] {
-            let effects = self.get_effects_from_color(color);
-            let count = effects.len();
-            for effect in effects {
-                result.push_str(&effect.to_string());
-            }
-
-            result.push_str(&format!("count: {count}\n"));
-        }
-
-        result
-    }
-
-    pub fn to_string(&self) -> String {
+    pub fn to_string(&mut self) -> String {
         let mut result = format!("bottom_color: {:?}\nkinds_to_chs:\n", self.bottom_color);
         for (index, kind) in self.kinds.iter().enumerate() {
             result.push(piece::get_ch(self.get_color(index), *kind));
@@ -341,8 +326,42 @@ impl BitBoard {
 
         result.push_str(&format!(
             "\nhashkey :{:016x}\nhashlock:{:016x}\n",
-            self.hashkey, self.hashlock
+            self.key, self.lock
         ));
+
+        // 可变借用
+        fn to_moves_string(bit_board: &mut BitBoard) -> String {
+            let mut result = format!("moves_string:\n");
+            for color in [piece::Color::Red, piece::Color::Black] {
+                let mut moves = Vec::new();
+                for index in
+                    bit_constant::get_indexs_from_bitatom(bit_board.color_pieces[color as usize])
+                {
+                    moves.push(bit_board.get_move_from_index(index));
+                }
+
+                result.push_str(&bit_constant::get_bitatom_array_string(&moves, false));
+            }
+
+            result
+        }
+
+        // 可变借用
+        fn to_possibles_string(bit_board: &mut BitBoard) -> String {
+            let mut result = format!("possible_string:\n");
+            for color in [piece::Color::Red, piece::Color::Black] {
+                let lock_all_possible = bit_possible::LockAllPossible::from(bit_board, color);
+                result.push_str(&lock_all_possible.to_string());
+            }
+
+            result
+        }
+
+        result.push('\n');
+        result.push_str(&to_moves_string(self));
+
+        result.push('\n');
+        result.push_str(&to_possibles_string(self));
 
         result
     }
@@ -486,7 +505,7 @@ length: 16 	non_zero: 16
 9: -1------- -------1- --------- --------- --------- --------- --------- 
 length: 16 	non_zero: 16
 
-effect_string:
+possible_string:
 (6,0) => (5,0)-0-0 【1】
 (6,2) => (5,2)-0-0 【1】
 (6,4) => (5,4)-0-0 【1】
@@ -631,7 +650,7 @@ length: 5 	non_zero: 5
 9: --------- --------- --------- --------- --------- 111-11111 
 length: 6 	non_zero: 5
 
-effect_string:
+possible_string:
 (2,6) => (0,6)-0-0 (1,6)-0-0 (2,0)-0-0 (2,1)-0-0 (2,2)-0-0 (2,3)-0-0 (2,4)-0-0 (2,5)-0-0 (2,7)-0-0 (2,8)-0-0 (3,6)-0-0 (4,6)-0-0 (5,6)-0-0 (6,6)-0-0 (7,6)-0-0 (8,6)-0-0 (9,6)-0-0 【17】
 (7,0) => (5,2)-0-0 (9,2)-0-0 【2】
 (7,5) => (5,4)-0-0 (5,6)-0-0 (6,3)-0-0 (6,7)-0-0 (8,3)-0-0 (8,7)-0-0 (9,4)-0-0 (9,6)-0-0 【8】
@@ -755,7 +774,7 @@ length: 5 	non_zero: 5
 9: --------- --------- --------- --------- --------- --------- ----1---- 
 length: 7 	non_zero: 6
 
-effect_string:
+possible_string:
 (5,3) => (0,3)-0-0 (1,3)-0-0 (2,3)-0-0 (3,3)-0-0 (4,3)-0-0 (5,0)-0-0 (5,1)-0-0 (5,2)-0-0 (5,4)-0-0 (5,5)-0-0 (5,6)-0-0 (5,7)-0-0 (5,8)-0-0 (6,3)-0-0 (7,3)-0-0 (8,3)-0-0 【16】
 (7,1) => (0,1)-0-0 (1,1)-0-0 (2,1)-0-0 (3,1)-0-0 (4,1)-0-0 (5,1)-0-0 (6,1)-0-0 (7,0)-0-0 (7,2)-0-0 (7,3)-0-0 (7,4)-0-0 (7,5)-0-0 (7,6)-0-0 (7,7)-0-0 (7,8)-0-0 (8,1)-0-0 (9,1)-0-0 【17】
 (9,2) => (7,0)-0-0 (7,4)-0-0 【2】
@@ -880,7 +899,7 @@ length: 7 	non_zero: 6
 9: --------- --------- --------- --------- --------- --------- 
 length: 6 	non_zero: 5
 
-effect_string:
+possible_string:
 (3,3) => (1,2)-0-0 (1,4)-0-0 (2,1)-0-0 (2,5)-0-0 (4,1)-0-0 (4,5)-0-0 (5,2)-0-0 【7】
 (5,4) => (3,5)-0-0 (4,2)-0-0 (4,6)-0-0 (6,2)-0-0 (6,6)-0-0 【5】
 (7,4) => (5,2)-0-0 (5,6)-0-0 (9,2)-0-0 【3】
@@ -901,18 +920,13 @@ count: 6
 
         for (fen, board_string) in fen_board_strings {
             let mut bit_board = BitBoard::new(&board::fen_to_pieces(fen));
-            let mut result = bit_board.to_string();
-
-            result.push('\n');
-            result.push_str(&bit_board.to_moves_string());
-
-            result.push('\n');
-            result.push_str(&bit_board.to_effects_string());
+            let result = bit_board.to_string();
 
             assert_eq!(board_string, result);
 
             let name = fen.split_at(3).0;
-            std::fs::write(format!("tests/output/bit_board_{name}.txt"), result).expect("Write Err.");
+            std::fs::write(format!("tests/output/bit_board_{name}.txt"), result)
+                .expect("Write Err.");
             // dbg!(bit_board);
         }
     }

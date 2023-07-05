@@ -26,7 +26,9 @@ impl RecordType {
     }
 
     pub fn get_record_type(file_name: &str) -> common::Result<RecordType> {
-        let ext_pos = file_name.rfind('.').ok_or(common::ParseError::RecordTypeError)?;
+        let ext_pos = file_name
+            .rfind('.')
+            .ok_or(common::ParseError::RecordTypeError)?;
         let ext_name = file_name
             .get(ext_pos + 1..)
             .ok_or(common::ParseError::RecordTypeError)?;
@@ -98,7 +100,10 @@ impl Coord {
                     .ok_or(common::ParseError::StringParse)?
                     .parse()
                     .map_err(|_| common::ParseError::StringParse)?;
-                let col_ch = coord_str.chars().next().ok_or(common::ParseError::StringParse)?;
+                let col_ch = coord_str
+                    .chars()
+                    .next()
+                    .ok_or(common::ParseError::StringParse)?;
                 let col = col_ch as usize - 'A' as usize;
 
                 Self::from(row, col)
@@ -195,7 +200,12 @@ impl CoordPair {
         }
     }
 
-    pub fn from_row_col(frow: usize, fcol: usize, trow: usize, tcol: usize) -> common::Result<Self> {
+    pub fn from_row_col(
+        frow: usize,
+        fcol: usize,
+        trow: usize,
+        tcol: usize,
+    ) -> common::Result<Self> {
         let from_coord = Coord::from(frow, fcol)?;
         let to_coord = Coord::from(trow, tcol)?;
 
@@ -208,6 +218,10 @@ impl CoordPair {
         let to_coord = Coord::from_string(&coordpair_str[mid..], record_type)?;
 
         Ok(CoordPair::from(from_coord, to_coord))
+    }
+
+    pub fn from_to_index(&self) -> (usize, usize) {
+        (self.from_coord.index(), self.to_coord.index())
     }
 
     pub fn row_col(&self) -> (usize, usize, usize, usize) {
