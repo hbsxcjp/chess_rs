@@ -137,6 +137,27 @@ pub fn get_kind_put_indexs(kind: piece::Kind, is_bottom: bool) -> Vec<usize> {
     }
 }
 
+// 随机数之xorShift128Plus
+// uint64_t s[2];
+
+// uint64_t xorshift128plus(void) {
+//     uint64_t x = s[0];
+//     uint64_t const y = s[1];
+//     s[0] = y;
+//     x ^= x << 23; // a
+//     s[1] = x ^ y ^ (x >> 17) ^ (y >> 26); // b, c
+//     return s[1] + y;
+// }
+
+// uint64_t next(void) {
+//     uint64_t s1 = s[0];
+//     const uint64_t s0 = s[1];
+//     s[0] = s0;
+//     s1 ^= s1 << 23; // a
+//     s[1] = s1 ^ s0 ^ (s1 >> 18) ^ (s0 >> 5); // b, c
+//     return s[1] + s0;
+// }
+
 const fn xorshift64(prev_value: u64) -> u64 {
     let mut next = prev_value;
     next ^= next << 13;
