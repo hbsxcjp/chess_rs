@@ -9,9 +9,8 @@ use crate::coord::{
 use crate::evaluation;
 use crate::piece::{self, COLORCOUNT, KINDCOUNT};
 
-type SetEffect = fn(
+type AddEvaluation = fn(
     &BitBoard,
-    // per_possible: &mut evaluation::PerPossible,
     aspect_evaluation: &mut evaluation::AspectEvaluation,
     from_index: usize,
     to_index: usize,
@@ -32,7 +31,6 @@ pub struct BitBoard {
     // 哈希局面数据
     key: u64,
     lock: u64,
-    // private static HistoryRecord? historyRecord;
 }
 
 impl BitBoard {
@@ -67,14 +65,6 @@ impl BitBoard {
         }
 
         bit_board
-    }
-
-    pub fn get_key(&self, color: piece::Color) -> u64 {
-        self.key ^ bit_constant::COLORZOBRISTKEY[color as usize]
-    }
-
-    pub fn get_lock(&self, color: piece::Color) -> u64 {
-        self.lock ^ bit_constant::COLORZOBRISTLOCK[color as usize]
     }
 
     fn get_color(&self, index: usize) -> piece::Color {
@@ -128,7 +118,7 @@ impl BitBoard {
         self.get_move_from_bitatom(self.color_pieces[color as usize])
     }
 
-    pub fn is_killed(&self, color: piece::Color) -> bool {
+    fn is_killed(&self, color: piece::Color) -> bool {
         let other_color = piece::other_color(color);
         let king_bitatom = self.color_kind_pieces[color as usize][piece::Kind::King as usize];
         let otherking_bitatom =
@@ -158,7 +148,7 @@ impl BitBoard {
         king_face() || (self.get_move_from_color(other_color) & king_bitatom) != 0
     }
 
-    pub fn is_failed(&self, color: piece::Color) -> bool {
+    fn is_failed(&self, color: piece::Color) -> bool {
         self.get_move_from_color(color) == 0
     }
 
@@ -216,9 +206,8 @@ impl BitBoard {
         eat_kind
     }
 
-    fn set_possible_killed(
+    fn add_evaluation_is_killed(
         &self,
-        // per_possible: &mut evaluation::PerPossible,
         aspect_evaluation: &mut evaluation::AspectEvaluation,
         from_index: usize,
         to_index: usize,
@@ -226,47 +215,28 @@ impl BitBoard {
     ) {
         // 如是对方将帅的位置则直接可走，不用判断是否被将军（如加以判断，则会直接走棋吃将帅）；棋子已走，取终点位置颜色
         let is_killed = eat_kind != piece::Kind::King && self.is_killed(self.get_color(to_index));
-        let score = if is_killed { -1 } else { 0 };
+        let count = if is_killed { 0 } else { 1 };
         // 扩展，增加其他功能
 
-        // per_possible.add(to_index, score, 0);
-
-        if !aspect_evaluation.contains_key(&from_index) {
-            aspect_evaluation.insert(from_index, evaluation::IndexEvaluation::new());
-        }
-        aspect_evaluation
-            .get_mut(&from_index)
-            .unwrap()
-            .insert(to_index, evaluation::Evaluation::new(to_index, score, 0));
+        aspect_evaluation.insert_evaluation(
+            from_index,
+            to_index,
+            evaluation::Evaluation::new(is_killed, count),
+        );
     }
 
     // 执行某一着后的效果(委托函数可叠加)
-    fn domove_set_possible_undo_move(
+    fn domove_add_evaluation_undo_move(
         &mut self,
-        // per_possible: &mut evaluation::PerPossible,
         aspect_evaluation: &mut evaluation::AspectEvaluation,
         from_index: usize,
         to_index: usize,
-        set_possible: SetEffect,
+        add_evaluation: AddEvaluation,
     ) {
-        let eat_kind = self.do_move(
-            // per_possible.from_index,
-            from_index,
-            to_index,
-            false,
-            piece::Kind::NoKind,
-        );
+        let eat_kind = self.do_move(from_index, to_index, false, piece::Kind::NoKind);
 
-        set_possible(
-            self,
-            // per_possible,
-            aspect_evaluation,
-            from_index,
-            to_index,
-            eat_kind,
-        );
+        add_evaluation(self, aspect_evaluation, from_index, to_index, eat_kind);
 
-        // self.do_move(per_possible.from_index, to_index, true, eat_kind);
         self.do_move(from_index, to_index, true, eat_kind);
     }
 
@@ -274,18 +244,14 @@ impl BitBoard {
         &mut self,
         from_index: usize,
     ) -> evaluation::AspectEvaluation {
-        // let mut per_possible = evaluation::PerPossible::new(from_index);
-
-        let mut aspect_evaluation = evaluation::AspectEvaluation::new();
-        aspect_evaluation.insert(from_index, evaluation::IndexEvaluation::new());
+        let mut aspect_evaluation = evaluation::AspectEvaluation::from(from_index);
         for to_index in bit_constant::get_indexs_from_bitatom(self.get_move_from_index(from_index))
         {
-            self.domove_set_possible_undo_move(
-                // &mut per_possible,
+            self.domove_add_evaluation_undo_move(
                 &mut aspect_evaluation,
                 from_index,
                 to_index,
-                Self::set_possible_killed,
+                Self::add_evaluation_is_killed,
             );
         }
 
@@ -296,14 +262,9 @@ impl BitBoard {
         &mut self,
         bit_atom: bit_constant::BitAtom,
     ) -> evaluation::AspectEvaluation {
-        // let mut possibles: Vec<evaluation::PerPossible> = Vec::new();
-
         let mut aspect_evaluation = evaluation::AspectEvaluation::new();
         for from_index in bit_constant::get_indexs_from_bitatom(bit_atom) {
-            // possibles.push(self.get_aspect_evaluation_from_index(from_index));
-            for (key, value) in self.get_aspect_evaluation_from_index(from_index) {
-                aspect_evaluation.insert(key, value);
-            }
+            aspect_evaluation.append(self.get_aspect_evaluation_from_index(from_index));
         }
 
         aspect_evaluation
@@ -321,61 +282,16 @@ impl BitBoard {
         })
     }
 
-    pub fn get_aspect_evaluation_from_color(
+    pub fn get_zorbist_aspect_evaluation(
         &mut self,
         color: piece::Color,
-    ) -> evaluation::AspectEvaluation {
-        self.get_aspect_evaluation_from_color_kind(color, piece::Kind::NoKind)
+    ) -> evaluation::ZorbistAspectEvaluation {
+        evaluation::ZorbistAspectEvaluation::new(
+            self.key ^ bit_constant::COLORZOBRISTKEY[color as usize],
+            self.lock ^ bit_constant::COLORZOBRISTLOCK[color as usize],
+            self.get_aspect_evaluation_from_color_kind(color, piece::Kind::NoKind),
+        )
     }
-
-    // fn get_possible_from_index(&mut self, from_index: usize) -> evaluation::PerPossible {
-    //     let mut per_possible = evaluation::PerPossible::new(from_index);
-
-    //     let mut aspect_evaluation = evaluation::AspectEvaluation::new();
-    //     for to_index in bit_constant::get_indexs_from_bitatom(self.get_move_from_index(from_index))
-    //     {
-    //         self.domove_set_possible_undo_move(
-    //             &mut per_possible,
-    //             &mut aspect_evaluation,
-    //             from_index,
-    //             to_index,
-    //             Self::set_possible_killed,
-    //         );
-    //     }
-
-    //     per_possible
-    // }
-
-    // fn get_possibles_from_bitatom(
-    //     &mut self,
-    //     bit_atom: bit_constant::BitAtom,
-    // ) -> Vec<evaluation::PerPossible> {
-    //     let mut possibles: Vec<evaluation::PerPossible> = Vec::new();
-    //     for from_index in bit_constant::get_indexs_from_bitatom(bit_atom) {
-    //         possibles.push(self.get_possible_from_index(from_index));
-    //     }
-
-    //     possibles
-    // }
-
-    // // kind == piece::Kind::NoKind，取全部种类棋子
-    // fn get_possibles_from_color_kind(
-    //     &mut self,
-    //     color: piece::Color,
-    //     kind: piece::Kind,
-    // ) -> Vec<evaluation::PerPossible> {
-    //     self.get_possibles_from_bitatom(match kind {
-    //         piece::Kind::NoKind => self.color_pieces[color as usize],
-    //         _ => self.color_kind_pieces[color as usize][kind as usize],
-    //     })
-    // }
-
-    // pub fn get_possibles_from_color(
-    //     &mut self,
-    //     color: piece::Color,
-    // ) -> Vec<evaluation::PerPossible> {
-    //     self.get_possibles_from_color_kind(color, piece::Kind::NoKind)
-    // }
 
     pub fn to_string(&mut self) -> String {
         let mut result = format!("bottom_color: {:?}\nkinds_to_chs:\n", self.bottom_color);
@@ -431,33 +347,8 @@ impl BitBoard {
             result
         }
 
-        // // 可变借用
-        // fn to_possibles_string(bit_board: &mut BitBoard) -> String {
-        //     let mut result = format!("possible_string:\n");
-        //     for color in [piece::Color::Red, piece::Color::Black] {
-        //         let lock_all_possible = evaluation::LockAllPossible::from(bit_board, color);
-        //         result.push_str(&lock_all_possible.to_string());
-        //     }
-
-        //     result
-        // }
-
-        fn to_aspect_evaluation_string(bit_board: &mut BitBoard) -> String {
-            let mut result = format!("aspect_evaluation_string:\n");
-            for color in [piece::Color::Red, piece::Color::Black] {
-                let history_evaluation = evaluation::HistoryEvaluation::from(bit_board, color);
-                result.push_str(&history_evaluation.to_string());
-            }
-
-            result
-        }
-
         result.push('\n');
         result.push_str(&to_moves_string(self));
-
-        result.push('\n');
-        // result.push_str(&to_possibles_string(self));
-        result.push_str(&to_aspect_evaluation_string(self));
 
         result
     }
@@ -470,7 +361,9 @@ mod tests {
     #[test]
     fn test_bit_board() {
         let fen_board_strings = [
-            ("rnbakabnr/9/1c5c1/p1p1p1p1p/9/9/P1P1P1P1P/1C5C1/9/RNBAKABNR","bottom_color: Red
+            (
+                "rnbakabnr/9/1c5c1/p1p1p1p1p/9/9/P1P1P1P1P/1C5C1/9/RNBAKABNR",
+                "bottom_color: Red
 kinds_to_chs:
 rnbakabnr
 _________
@@ -600,44 +493,11 @@ length: 16 	non_zero: 16
 8: --------- --------- --------- --------- --------- --------- --------- 
 9: -1------- -------1- --------- --------- --------- --------- --------- 
 length: 16 	non_zero: 16
-
-possible_string:
-(6,0) => (5,0)-0-0 【1】
-(6,2) => (5,2)-0-0 【1】
-(6,4) => (5,4)-0-0 【1】
-(6,6) => (5,6)-0-0 【1】
-(6,8) => (5,8)-0-0 【1】
-(7,1) => (0,1)-0-0 (3,1)-0-0 (4,1)-0-0 (5,1)-0-0 (6,1)-0-0 (7,0)-0-0 (7,2)-0-0 (7,3)-0-0 (7,4)-0-0 (7,5)-0-0 (7,6)-0-0 (8,1)-0-0 【12】
-(7,7) => (0,7)-0-0 (3,7)-0-0 (4,7)-0-0 (5,7)-0-0 (6,7)-0-0 (7,2)-0-0 (7,3)-0-0 (7,4)-0-0 (7,5)-0-0 (7,6)-0-0 (7,8)-0-0 (8,7)-0-0 【12】
-(9,0) => (7,0)-0-0 (8,0)-0-0 【2】
-(9,1) => (7,0)-0-0 (7,2)-0-0 【2】
-(9,2) => (7,0)-0-0 (7,4)-0-0 【2】
-(9,3) => (8,4)-0-0 【1】
-(9,4) => (8,4)-0-0 【1】
-(9,5) => (8,4)-0-0 【1】
-(9,6) => (7,4)-0-0 (7,8)-0-0 【2】
-(9,7) => (7,6)-0-0 (7,8)-0-0 【2】
-(9,8) => (7,8)-0-0 (8,8)-0-0 【2】
-count: 16
-(0,0) => (1,0)-0-0 (2,0)-0-0 【2】
-(0,1) => (2,0)-0-0 (2,2)-0-0 【2】
-(0,2) => (2,0)-0-0 (2,4)-0-0 【2】
-(0,3) => (1,4)-0-0 【1】
-(0,4) => (1,4)-0-0 【1】
-(0,5) => (1,4)-0-0 【1】
-(0,6) => (2,4)-0-0 (2,8)-0-0 【2】
-(0,7) => (2,6)-0-0 (2,8)-0-0 【2】
-(0,8) => (1,8)-0-0 (2,8)-0-0 【2】
-(2,1) => (1,1)-0-0 (2,0)-0-0 (2,2)-0-0 (2,3)-0-0 (2,4)-0-0 (2,5)-0-0 (2,6)-0-0 (3,1)-0-0 (4,1)-0-0 (5,1)-0-0 (6,1)-0-0 (9,1)-0-0 【12】
-(2,7) => (1,7)-0-0 (2,2)-0-0 (2,3)-0-0 (2,4)-0-0 (2,5)-0-0 (2,6)-0-0 (2,8)-0-0 (3,7)-0-0 (4,7)-0-0 (5,7)-0-0 (6,7)-0-0 (9,7)-0-0 【12】
-(3,0) => (4,0)-0-0 【1】
-(3,2) => (4,2)-0-0 【1】
-(3,4) => (4,4)-0-0 【1】
-(3,6) => (4,6)-0-0 【1】
-(3,8) => (4,8)-0-0 【1】
-count: 16
-"),
-            ("5a3/4ak2r/6R2/8p/9/9/9/B4N2B/4K4/3c5","bottom_color: Red
+",
+            ),
+            (
+                "5a3/4ak2r/6R2/8p/9/9/9/B4N2B/4K4/3c5",
+                "bottom_color: Red
 kinds_to_chs:
 _____a___
 ____ak__r
@@ -745,23 +605,11 @@ length: 5 	non_zero: 5
 8: --------- --------- --------- --------- --------- ---1----- 
 9: --------- --------- --------- --------- --------- 111-11111 
 length: 6 	non_zero: 5
-
-possible_string:
-(2,6) => (0,6)-0-0 (1,6)-0-0 (2,0)-0-0 (2,1)-0-0 (2,2)-0-0 (2,3)-0-0 (2,4)-0-0 (2,5)-0-0 (2,7)-0-0 (2,8)-0-0 (3,6)-0-0 (4,6)-0-0 (5,6)-0-0 (6,6)-0-0 (7,6)-0-0 (8,6)-0-0 (9,6)-0-0 【17】
-(7,0) => (5,2)-0-0 (9,2)-0-0 【2】
-(7,5) => (5,4)-0-0 (5,6)-0-0 (6,3)-0-0 (6,7)-0-0 (8,3)-0-0 (8,7)-0-0 (9,4)-0-0 (9,6)-0-0 【8】
-(7,8) => (5,6)-0-0 (9,6)-0-0 【2】
-(8,4) => (7,4)-0-0 (8,3)-0-0 (8,5)-0-0 (9,4)-0-0 【4】
-count: 5
-(0,5) => 【0】
-(1,4) => (0,3)-0-0 (2,3)-0-0 (2,5)-0-0 【3】
-(1,5) => (2,5)--1-0 【1】
-(1,8) => (0,8)-0-0 (1,6)-0-0 (1,7)-0-0 (2,8)-0-0 【4】
-(3,8) => (4,8)-0-0 【1】
-(9,3) => (0,3)-0-0 (1,3)-0-0 (2,3)-0-0 (3,3)-0-0 (4,3)-0-0 (5,3)-0-0 (6,3)-0-0 (7,3)-0-0 (8,3)-0-0 (9,0)-0-0 (9,1)-0-0 (9,2)-0-0 (9,4)-0-0 (9,5)-0-0 (9,6)-0-0 (9,7)-0-0 (9,8)-0-0 【17】
-count: 6
-"),
-            ("2b1kab2/4a4/4c4/9/9/3R5/9/1C7/4r4/2BK2B2","bottom_color: Red
+",
+            ),
+            (
+                "2b1kab2/4a4/4c4/9/9/3R5/9/1C7/4r4/2BK2B2",
+                "bottom_color: Red
 kinds_to_chs:
 __b_kab__
 ____a____
@@ -869,24 +717,11 @@ length: 5 	non_zero: 5
 8: --------- --------- --------- --------- --------- --------- 1111-1111 
 9: --------- --------- --------- --------- --------- --------- ----1---- 
 length: 7 	non_zero: 6
-
-possible_string:
-(5,3) => (0,3)-0-0 (1,3)-0-0 (2,3)-0-0 (3,3)-0-0 (4,3)-0-0 (5,0)-0-0 (5,1)-0-0 (5,2)-0-0 (5,4)-0-0 (5,5)-0-0 (5,6)-0-0 (5,7)-0-0 (5,8)-0-0 (6,3)-0-0 (7,3)-0-0 (8,3)-0-0 【16】
-(7,1) => (0,1)-0-0 (1,1)-0-0 (2,1)-0-0 (3,1)-0-0 (4,1)-0-0 (5,1)-0-0 (6,1)-0-0 (7,0)-0-0 (7,2)-0-0 (7,3)-0-0 (7,4)-0-0 (7,5)-0-0 (7,6)-0-0 (7,7)-0-0 (7,8)-0-0 (8,1)-0-0 (9,1)-0-0 【17】
-(9,2) => (7,0)-0-0 (7,4)-0-0 【2】
-(9,3) => (8,3)--1-0 (9,4)--1-0 【2】
-(9,6) => (7,4)-0-0 (7,8)-0-0 【2】
-count: 5
-(0,2) => (2,0)-0-0 【1】
-(0,4) => (0,3)--1-0 【1】
-(0,5) => 【0】
-(0,6) => (2,8)-0-0 【1】
-(1,4) => (0,3)-0-0 (2,3)-0-0 (2,5)-0-0 【3】
-(2,4) => (2,0)-0-0 (2,1)-0-0 (2,2)-0-0 (2,3)-0-0 (2,5)-0-0 (2,6)-0-0 (2,7)-0-0 (2,8)-0-0 (3,4)-0-0 (4,4)-0-0 (5,4)-0-0 (6,4)-0-0 (7,4)-0-0 【13】
-(8,4) => (3,4)-0-0 (4,4)-0-0 (5,4)-0-0 (6,4)-0-0 (7,4)-0-0 (8,0)-0-0 (8,1)-0-0 (8,2)-0-0 (8,3)-0-0 (8,5)-0-0 (8,6)-0-0 (8,7)-0-0 (8,8)-0-0 (9,4)-0-0 【14】
-count: 7
-"),
-            ("4kab2/4a4/4b4/3N5/9/4N4/4n4/4B4/4A4/3AK1B2","bottom_color: Red
+",
+            ),
+            (
+                "4kab2/4a4/4b4/3N5/9/4N4/4n4/4B4/4A4/3AK1B2",
+                "bottom_color: Red
 kinds_to_chs:
 ____kab__
 ____a____
@@ -994,31 +829,29 @@ length: 7 	non_zero: 6
 8: --------- --------- --------- --------- --------- --------- 
 9: --------- --------- --------- --------- --------- --------- 
 length: 6 	non_zero: 5
-
-possible_string:
-(3,3) => (1,2)-0-0 (1,4)-0-0 (2,1)-0-0 (2,5)-0-0 (4,1)-0-0 (4,5)-0-0 (5,2)-0-0 【7】
-(5,4) => (3,5)-0-0 (4,2)-0-0 (4,6)-0-0 (6,2)-0-0 (6,6)-0-0 【5】
-(7,4) => (5,2)-0-0 (5,6)-0-0 (9,2)-0-0 【3】
-(8,4) => (7,3)-0-0 (7,5)-0-0 (9,5)-0-0 【3】
-(9,3) => 【0】
-(9,4) => (9,5)-0-0 【1】
-(9,6) => (7,8)-0-0 【1】
-count: 7
-(0,4) => (0,3)-0-0 【1】
-(0,5) => 【0】
-(0,6) => (2,8)-0-0 【1】
-(1,4) => (0,3)-0-0 (2,3)-0-0 (2,5)-0-0 【3】
-(2,4) => (0,2)-0-0 (4,6)-0-0 【2】
-(6,4) => (5,2)-0-0 (5,6)-0-0 (7,2)-0-0 (7,6)-0-0 【4】
-count: 6
-"),
+",
+            ),
         ];
 
-        for (fen, _board_string) in fen_board_strings {
+        for (fen, board_string) in fen_board_strings {
             let mut bit_board = BitBoard::new(&board::fen_to_pieces(fen));
-            let result = bit_board.to_string();
+            let mut result = bit_board.to_string();
 
-            // assert_eq!(board_string, result);
+            assert_eq!(board_string, result);
+
+            // // 可变借用
+            fn to_aspect_evaluation_string(bit_board: &mut BitBoard) -> String {
+                let mut result = format!("aspect_evaluation_string:\n");
+                for color in [piece::Color::Red, piece::Color::Black] {
+                    let key_lock_aspect_evaluation = bit_board.get_zorbist_aspect_evaluation(color);
+                    result.push_str(&key_lock_aspect_evaluation.to_string());
+                }
+
+                result
+            }
+
+            result.push('\n');
+            result.push_str(&to_aspect_evaluation_string(&mut bit_board));
 
             let name = fen.split_at(3).0;
             std::fs::write(format!("tests/output/bit_board_{name}.txt"), result)

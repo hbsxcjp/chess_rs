@@ -3,142 +3,170 @@
 
 use std::collections::HashMap;
 
-use crate::bit_board;
-// use crate::bit_constant;
+// use crate::bit_board;
 use crate::coord;
-use crate::piece;
-// use crate::piece; //::{self, COLORCOUNT, KINDCOUNT};
+// use crate::piece;
 
 #[derive(Debug)]
 pub struct Evaluation {
-    to_index: usize,
+    is_killed: bool,
 
-    score: i32,
-    count: i32,
+    count: usize,
+}
+
+// to_index->Evaluation
+pub struct IndexEvaluation {
+    index_evaluation: HashMap<usize, Evaluation>,
+}
+
+// from_index->IndexEvaluation
+pub struct AspectEvaluation {
+    aspect_evaluation: HashMap<usize, IndexEvaluation>,
 }
 
 // #[derive(Debug)]
-// pub struct PerPossible {
-//     pub from_index: usize,
-
-//     possibles: Vec<Evaluation>,
-// }
-
-// #[derive(Debug)]
-// pub struct LockAllPossible {
-//     lock: u64,
-
-//     all_possible: Vec<PerPossible>,
-// }
-
-// to_index->possible
-pub type IndexEvaluation = HashMap<usize, Evaluation>;
-
-// from_index->to_index->possible
-pub type AspectEvaluation = HashMap<usize, IndexEvaluation>;
-
-#[derive(Debug)]
-pub struct HistoryEvaluation {
-    // zobrist->from_index->to_index->possible
-    zobrist_all_possible: HashMap<u64, AspectEvaluation>,
+pub struct ZorbistAspectEvaluation {
+    key_lock_aspect_evaluation: HashMap<u64, (u64, AspectEvaluation)>,
 }
 
 // 后期根据需要扩展
 impl Evaluation {
-    pub fn new(to_index: usize, score: i32, count: i32) -> Evaluation {
-        Evaluation {
-            to_index,
-            score,
-            count,
-        }
+    pub fn new(is_killed: bool, count: usize) -> Evaluation {
+        Evaluation { is_killed, count }
     }
 
     pub fn to_string(&self) -> String {
-        let coord = coord::Coord::from_index(self.to_index).unwrap();
-        format!(
-            "{}-{}-{} ",
-            coord.to_string(coord::RecordType::Txt),
-            self.score,
-            self.count
-        )
+        format!("{}-{} ", self.is_killed, self.count)
     }
 }
 
-// impl PerPossible {
-//     pub fn new(from_index: usize) -> PerPossible {
-//         PerPossible {
-//             from_index,
-//             possibles: Vec::new(),
-//         }
-//     }
-
-//     pub fn add(&mut self, to_index: usize, score: i32, count: i32) {
-//         self.possibles.push(Evaluation::new(to_index, score, count));
-//     }
-
-//     pub fn to_string(&self) -> String {
-//         let coord = coord::Coord::from_index(self.from_index).unwrap();
-//         let mut result = format!("{} => ", coord.to_string(coord::RecordType::Txt));
-//         for possible in self.possibles.iter() {
-//             result.push_str(&possible.to_string());
-//         }
-//         result.push_str(&format!("【{}】\n", self.possibles.len()));
-
-//         result
-//     }
-// }
-
-// impl LockAllPossible {
-//     pub fn from(bit_board: &mut bit_board::BitBoard, color: piece::Color) -> LockAllPossible {
-//         LockAllPossible {
-//             lock: bit_board.get_lock(color),
-//             all_possible: bit_board.get_possibles_from_color(color),
-//         }
-//     }
-
-//     pub fn to_string(&self) -> String {
-//         let mut result = String::new();
-//         for per_possible in self.all_possible.iter() {
-//             result.push_str(&per_possible.to_string());
-//         }
-//         result.push_str(&format!("count: {}\n", self.all_possible.len()));
-
-//         result
-//     }
-// }
-
-impl HistoryEvaluation {
-    pub fn new() -> HistoryEvaluation {
-        HistoryEvaluation {
-            zobrist_all_possible: HashMap::new(),
+impl IndexEvaluation {
+    pub fn new() -> Self {
+        Self {
+            index_evaluation: HashMap::new(),
         }
     }
 
-    pub fn from(bit_board: &mut bit_board::BitBoard, color: piece::Color) -> HistoryEvaluation {
-        let mut history_evaluation = HistoryEvaluation::new();
-        history_evaluation.zobrist_all_possible.insert(
-            bit_board.get_key(color),
-            bit_board.get_aspect_evaluation_from_color(color),
-        );
+    // pub fn from(to_index: usize, is_killed: bool, count: usize) -> Self {
+    //     let mut index_evaluation = Self::new();
+    //     index_evaluation.insert(to_index, Evaluation::new(is_killed, count));
 
-        history_evaluation
+    //     index_evaluation
+    // }
+
+    pub fn insert(&mut self, to_index: usize, evaluation: Evaluation) {
+        self.index_evaluation.insert(to_index, evaluation);
+    }
+
+    // pub fn append(&mut self, other_index_evaluation: Self) {
+    //     for (to_index, evaluation) in other_index_evaluation.index_evaluation {
+    //         self.index_evaluation.insert(to_index, evaluation);
+    //     }
+    // }
+
+    pub fn to_string(&self) -> String {
+        let mut result = String::new();
+        for (to_index, evaluation) in self.index_evaluation.iter() {
+            let coord = coord::Coord::from_index(*to_index).unwrap();
+            result.push_str(&format!(
+                "{}-{}",
+                coord.to_string(coord::RecordType::Txt),
+                evaluation.to_string()
+            ));
+        }
+        result.push_str(&format!("【{}】\n", self.index_evaluation.len()));
+
+        result
+    }
+}
+
+impl AspectEvaluation {
+    pub fn new() -> Self {
+        Self {
+            aspect_evaluation: HashMap::new(),
+        }
+    }
+
+    pub fn from(from_index: usize) -> Self {
+        let mut aspect_evaluation = Self::new();
+        aspect_evaluation.insert(from_index, IndexEvaluation::new());
+
+        aspect_evaluation
+    }
+
+    pub fn insert_evaluation(
+        &mut self,
+        from_index: usize,
+        to_index: usize,
+        evaluation: Evaluation,
+    ) {
+        if !self.aspect_evaluation.contains_key(&from_index) {
+            self.insert(from_index, IndexEvaluation::new());
+        }
+
+        self.aspect_evaluation
+            .get_mut(&from_index)
+            .unwrap()
+            .insert(to_index, evaluation);
+    }
+
+    pub fn insert(&mut self, from_index: usize, index_evaluation: IndexEvaluation) {
+        self.aspect_evaluation.insert(from_index, index_evaluation);
+    }
+
+    pub fn append(&mut self, other_aspect_evaluation: Self) {
+        for (from_index, index_evaluation) in other_aspect_evaluation.aspect_evaluation {
+            self.aspect_evaluation.insert(from_index, index_evaluation);
+        }
     }
 
     pub fn to_string(&self) -> String {
         let mut result = String::new();
-        for (_key, aspect_evaluation) in self.zobrist_all_possible.iter() {
-            for (from_index, index_evaluation) in aspect_evaluation.iter() {
-                let coord = coord::Coord::from_index(*from_index).unwrap();
-                result.push_str(&format!("{} => ", coord.to_string(coord::RecordType::Txt)));
-                for (_to_index, evaluation) in index_evaluation.iter() {
-                    result.push_str(&evaluation.to_string());
-                }
-                result.push_str(&format!("【{}】\n", index_evaluation.len()));
-            }
-            result.push_str(&format!("count: {}\n", aspect_evaluation.len()));
+        for (from_index, index_evaluation) in self.aspect_evaluation.iter() {
+            let coord = coord::Coord::from_index(*from_index).unwrap();
+            result.push_str(&format!(
+                "{} => {}",
+                coord.to_string(coord::RecordType::Txt),
+                index_evaluation.to_string()
+            ));
+        }
+        result.push_str(&format!(
+            "aspect_evaluation.len: {}\n",
+            self.aspect_evaluation.len()
+        ));
+
+        result
+    }
+}
+
+impl ZorbistAspectEvaluation {
+    pub fn new(
+        key: u64,
+        lock: u64,
+        aspect_evaluation: AspectEvaluation,
+    ) -> ZorbistAspectEvaluation {
+        let mut zorbist_aspect_evaluation = ZorbistAspectEvaluation {
+            key_lock_aspect_evaluation: HashMap::new(),
+        };
+
+        zorbist_aspect_evaluation
+            .key_lock_aspect_evaluation
+            .insert(key, (lock, aspect_evaluation));
+
+        zorbist_aspect_evaluation
+    }
+
+    pub fn to_string(&self) -> String {
+        let mut result = String::new();
+        for (key, (lock, aspect_evaluation)) in self.key_lock_aspect_evaluation.iter() {
+            result.push_str(&format!("key:  {:016x}\nlock: {:016x}\n", key, lock));
+            result.push_str(&aspect_evaluation.to_string());
         }
 
-        // result.push_str(&format!("count: {}\n", self.zobrist_all_possible.len()));
+        result.push_str(&format!(
+            "zorbist_aspect_evaluation.len: {}\n",
+            self.key_lock_aspect_evaluation.len()
+        ));
 
         result
     }
