@@ -9,7 +9,7 @@ use crate::coord::{
 use crate::evaluation;
 use crate::piece::{self, COLORCOUNT, KINDCOUNT};
 
-type AddEvaluation = fn(
+type OperateEvaluation = fn(
     &BitBoard,
     aspect_evaluation: &mut evaluation::AspectEvaluation,
     from_index: usize,
@@ -152,48 +152,54 @@ impl BitBoard {
         self.get_move_from_color(color) == 0
     }
 
-    fn do_move(
+    pub fn do_move(&mut self, from_index: usize, to_index: usize) -> piece::Kind {
+        let eat_kind = self.kinds[to_index];
+        self.operate_move(from_index, to_index, false, piece::Kind::NoKind);
+
+        eat_kind
+    }
+
+    pub fn undo_move(&mut self, from_index: usize, to_index: usize, eat_kind: piece::Kind) {
+        self.operate_move(from_index, to_index, true, eat_kind);
+    }
+
+    fn operate_move(
         &mut self,
         from_index: usize,
         to_index: usize,
-        is_back: bool,
-        mut eat_kind: piece::Kind,
-    ) -> piece::Kind {
-        let start_index = if is_back { to_index } else { from_index };
-        let end_index = if is_back { from_index } else { to_index };
-        let from_kind = self.kinds[start_index];
-        let from_color_i = self.get_color(start_index) as usize;
-        let from_kind_i = from_kind as usize;
+        is_undo: bool,
+        eat_kind: piece::Kind,
+    ) {
+        let start_index = if is_undo { to_index } else { from_index };
+        let end_index = if is_undo { from_index } else { to_index };
+        let start_kind = self.kinds[start_index];
+        let start_color_i = self.get_color(start_index) as usize;
+        let start_kind_i = start_kind as usize;
         let from_bitatrom = bit_constant::MASK[from_index];
         let to_bitatom = bit_constant::MASK[to_index];
         let move_bitatom = from_bitatrom | to_bitatom;
-        if !is_back {
-            eat_kind = self.kinds[to_index];
-        }
 
         // 清除原位置，置位新位置
-        self.kinds[end_index] = from_kind;
-        self.kinds[start_index] = piece::Kind::NoKind;
+        self.kinds[end_index] = start_kind;
+        self.kinds[start_index] = eat_kind;
 
-        self.color_kind_pieces[from_color_i][from_kind_i] ^= move_bitatom;
-        self.color_pieces[from_color_i] ^= move_bitatom;
+        self.color_kind_pieces[start_color_i][start_kind_i] ^= move_bitatom;
+        self.color_pieces[start_color_i] ^= move_bitatom;
 
-        // self.hashkey ^= bit_constant::ZOBRISTKEY[from_color_i][from_kind_i][from_index]
-        //     ^ bit_constant::ZOBRISTKEY[from_color_i][from_kind_i][to_index];
-        // self.hashlock ^= bit_constant::ZOBRISTKEY[from_color_i][from_kind_i][from_index]
-        //     ^ bit_constant::ZOBRISTKEY[from_color_i][from_kind_i][to_index];
+        self.key ^= bit_constant::ZOBRISTKEY[start_color_i][start_kind_i][from_index]
+            ^ bit_constant::ZOBRISTKEY[start_color_i][start_kind_i][to_index];
+        self.lock ^= bit_constant::ZOBRISTLOCK[start_color_i][start_kind_i][from_index]
+            ^ bit_constant::ZOBRISTLOCK[start_color_i][start_kind_i][to_index];
 
         if eat_kind != piece::Kind::NoKind {
-            let to_color_i = if from_color_i == 0 { 1 } else { 0 };
+            let to_color_i = if start_color_i == 0 { 1 } else { 0 };
             let eat_kind_i = eat_kind as usize;
-            if is_back {
-                self.kinds[start_index] = eat_kind;
-            }
+
             self.color_kind_pieces[to_color_i][eat_kind_i] ^= to_bitatom;
             self.color_pieces[to_color_i] ^= to_bitatom;
 
-            // self.hashkey ^= bit_constant::ZOBRISTKEY[to_color_i][eat_kind_i][to_index];
-            // self.hashlock ^= bit_constant::ZOBRISTKEY[to_color_i][eat_kind_i][to_index];
+            self.key ^= bit_constant::ZOBRISTKEY[to_color_i][eat_kind_i][to_index];
+            self.lock ^= bit_constant::ZOBRISTLOCK[to_color_i][eat_kind_i][to_index];
 
             self.all_pieces ^= from_bitatrom;
             self.rotate_all_pieces ^= bit_constant::ROTATEMASK[from_index];
@@ -202,8 +208,6 @@ impl BitBoard {
             self.rotate_all_pieces ^=
                 bit_constant::ROTATEMASK[from_index] | bit_constant::ROTATEMASK[to_index];
         }
-
-        eat_kind
     }
 
     fn add_evaluation_is_killed(
@@ -226,18 +230,18 @@ impl BitBoard {
     }
 
     // 执行某一着后的效果(委托函数可叠加)
-    fn domove_add_evaluation_undo_move(
+    fn operate_evaluation_domove_undo_move(
         &mut self,
         aspect_evaluation: &mut evaluation::AspectEvaluation,
         from_index: usize,
         to_index: usize,
-        add_evaluation: AddEvaluation,
+        operate_evaluation: OperateEvaluation,
     ) {
-        let eat_kind = self.do_move(from_index, to_index, false, piece::Kind::NoKind);
+        let eat_kind = self.do_move(from_index, to_index);
 
-        add_evaluation(self, aspect_evaluation, from_index, to_index, eat_kind);
+        operate_evaluation(self, aspect_evaluation, from_index, to_index, eat_kind);
 
-        self.do_move(from_index, to_index, true, eat_kind);
+        self.undo_move(from_index, to_index, eat_kind);
     }
 
     fn get_aspect_evaluation_from_index(
@@ -247,7 +251,7 @@ impl BitBoard {
         let mut aspect_evaluation = evaluation::AspectEvaluation::from(from_index);
         for to_index in bit_constant::get_indexs_from_bitatom(self.get_move_from_index(from_index))
         {
-            self.domove_add_evaluation_undo_move(
+            self.operate_evaluation_domove_undo_move(
                 &mut aspect_evaluation,
                 from_index,
                 to_index,
@@ -262,7 +266,7 @@ impl BitBoard {
         &mut self,
         bit_atom: bit_constant::BitAtom,
     ) -> evaluation::AspectEvaluation {
-        let mut aspect_evaluation = evaluation::AspectEvaluation::new();
+        let aspect_evaluation = evaluation::AspectEvaluation::new();
         for from_index in bit_constant::get_indexs_from_bitatom(bit_atom) {
             aspect_evaluation.append(self.get_aspect_evaluation_from_index(from_index));
         }
@@ -282,15 +286,19 @@ impl BitBoard {
         })
     }
 
-    pub fn get_zorbist_aspect_evaluation(
+    pub fn get_aspect_evaluation_from_color(
         &mut self,
         color: piece::Color,
-    ) -> evaluation::ZorbistAspectEvaluation {
-        evaluation::ZorbistAspectEvaluation::new(
-            self.key ^ bit_constant::COLORZOBRISTKEY[color as usize],
-            self.lock ^ bit_constant::COLORZOBRISTLOCK[color as usize],
-            self.get_aspect_evaluation_from_color_kind(color, piece::Kind::NoKind),
-        )
+    ) -> evaluation::AspectEvaluation {
+        self.get_aspect_evaluation_from_color_kind(color, piece::Kind::NoKind)
+    }
+
+    pub fn get_key(&self, color: piece::Color) -> u64 {
+        self.key ^ bit_constant::COLORZOBRISTKEY[color as usize]
+    }
+
+    pub fn get_lock(&self, color: piece::Color) -> u64 {
+        self.lock ^ bit_constant::COLORZOBRISTLOCK[color as usize]
     }
 
     pub fn to_string(&mut self) -> String {
@@ -843,8 +851,9 @@ length: 6 	non_zero: 5
             fn to_aspect_evaluation_string(bit_board: &mut BitBoard) -> String {
                 let mut result = format!("aspect_evaluation_string:\n");
                 for color in [piece::Color::Red, piece::Color::Black] {
-                    let key_lock_aspect_evaluation = bit_board.get_zorbist_aspect_evaluation(color);
-                    result.push_str(&key_lock_aspect_evaluation.to_string());
+                    let zorbist_aspect_evaluation =
+                        evaluation::ZorbistAspectEvaluation::from(bit_board, color);
+                    result.push_str(&zorbist_aspect_evaluation.to_string());
                 }
 
                 result

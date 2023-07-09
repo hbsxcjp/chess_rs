@@ -1,11 +1,10 @@
 #![allow(dead_code)]
 // #![allow(unused_imports)]
 
+use std::cell::RefCell;
 use std::collections::HashMap;
 
-// use crate::bit_board;
-use crate::coord;
-// use crate::piece;
+use crate::{bit_board, bit_constant, coord, piece};
 
 #[derive(Debug)]
 pub struct Evaluation {
@@ -16,23 +15,27 @@ pub struct Evaluation {
 
 // to_index->Evaluation
 pub struct IndexEvaluation {
-    index_evaluation: HashMap<usize, Evaluation>,
+    inner: HashMap<usize, Evaluation>,
 }
 
 // from_index->IndexEvaluation
 pub struct AspectEvaluation {
-    aspect_evaluation: HashMap<usize, IndexEvaluation>,
+    inner: RefCell<HashMap<usize, IndexEvaluation>>,
 }
 
 // #[derive(Debug)]
 pub struct ZorbistAspectEvaluation {
-    key_lock_aspect_evaluation: HashMap<u64, (u64, AspectEvaluation)>,
+    inner: HashMap<u64, (u64, AspectEvaluation)>,
 }
 
 // 后期根据需要扩展
 impl Evaluation {
     pub fn new(is_killed: bool, count: usize) -> Evaluation {
         Evaluation { is_killed, count }
+    }
+
+    pub fn increase(&mut self) {
+        self.count += 1;
     }
 
     pub fn to_string(&self) -> String {
@@ -43,30 +46,22 @@ impl Evaluation {
 impl IndexEvaluation {
     pub fn new() -> Self {
         Self {
-            index_evaluation: HashMap::new(),
+            inner: HashMap::new(),
         }
     }
 
-    // pub fn from(to_index: usize, is_killed: bool, count: usize) -> Self {
-    //     let mut index_evaluation = Self::new();
-    //     index_evaluation.insert(to_index, Evaluation::new(is_killed, count));
-
-    //     index_evaluation
-    // }
-
     pub fn insert(&mut self, to_index: usize, evaluation: Evaluation) {
-        self.index_evaluation.insert(to_index, evaluation);
-    }
+        if !self.inner.contains_key(&to_index) {
+            self.inner.insert(to_index, evaluation);
+            return;
+        }
 
-    // pub fn append(&mut self, other_index_evaluation: Self) {
-    //     for (to_index, evaluation) in other_index_evaluation.index_evaluation {
-    //         self.index_evaluation.insert(to_index, evaluation);
-    //     }
-    // }
+        self.inner.get_mut(&to_index).unwrap().increase();
+    }
 
     pub fn to_string(&self) -> String {
         let mut result = String::new();
-        for (to_index, evaluation) in self.index_evaluation.iter() {
+        for (to_index, evaluation) in self.inner.iter() {
             let coord = coord::Coord::from_index(*to_index).unwrap();
             result.push_str(&format!(
                 "{}-{}",
@@ -74,7 +69,7 @@ impl IndexEvaluation {
                 evaluation.to_string()
             ));
         }
-        result.push_str(&format!("【{}】\n", self.index_evaluation.len()));
+        result.push_str(&format!("【{}】\n", self.inner.len()));
 
         result
     }
@@ -83,46 +78,42 @@ impl IndexEvaluation {
 impl AspectEvaluation {
     pub fn new() -> Self {
         Self {
-            aspect_evaluation: HashMap::new(),
+            inner: RefCell::new(HashMap::new()),
         }
     }
 
     pub fn from(from_index: usize) -> Self {
-        let mut aspect_evaluation = Self::new();
+        let aspect_evaluation = Self::new();
         aspect_evaluation.insert(from_index, IndexEvaluation::new());
 
         aspect_evaluation
     }
 
-    pub fn insert_evaluation(
-        &mut self,
-        from_index: usize,
-        to_index: usize,
-        evaluation: Evaluation,
-    ) {
-        if !self.aspect_evaluation.contains_key(&from_index) {
+    pub fn insert_evaluation(&self, from_index: usize, to_index: usize, evaluation: Evaluation) {
+        if !self.inner.borrow().contains_key(&from_index) {
             self.insert(from_index, IndexEvaluation::new());
         }
 
-        self.aspect_evaluation
+        self.inner
+            .borrow_mut()
             .get_mut(&from_index)
             .unwrap()
             .insert(to_index, evaluation);
     }
 
-    pub fn insert(&mut self, from_index: usize, index_evaluation: IndexEvaluation) {
-        self.aspect_evaluation.insert(from_index, index_evaluation);
+    pub fn insert(&self, from_index: usize, index_evaluation: IndexEvaluation) {
+        self.inner.borrow_mut().insert(from_index, index_evaluation);
     }
 
-    pub fn append(&mut self, other_aspect_evaluation: Self) {
-        for (from_index, index_evaluation) in other_aspect_evaluation.aspect_evaluation {
-            self.aspect_evaluation.insert(from_index, index_evaluation);
+    pub fn append(&self, other_aspect_evaluation: Self) {
+        for (from_index, index_evaluation) in other_aspect_evaluation.inner.into_inner() {
+            self.insert(from_index, index_evaluation);
         }
     }
 
     pub fn to_string(&self) -> String {
         let mut result = String::new();
-        for (from_index, index_evaluation) in self.aspect_evaluation.iter() {
+        for (from_index, index_evaluation) in self.inner.borrow().iter() {
             let coord = coord::Coord::from_index(*from_index).unwrap();
             result.push_str(&format!(
                 "{} => {}",
@@ -132,7 +123,7 @@ impl AspectEvaluation {
         }
         result.push_str(&format!(
             "aspect_evaluation.len: {}\n",
-            self.aspect_evaluation.len()
+            self.inner.borrow().len()
         ));
 
         result
@@ -140,66 +131,77 @@ impl AspectEvaluation {
 }
 
 impl ZorbistAspectEvaluation {
-    pub fn new(
-        key: u64,
-        lock: u64,
-        aspect_evaluation: AspectEvaluation,
-    ) -> ZorbistAspectEvaluation {
-        let mut zorbist_aspect_evaluation = ZorbistAspectEvaluation {
-            key_lock_aspect_evaluation: HashMap::new(),
-        };
+    pub fn new() -> Self {
+        Self {
+            inner: HashMap::new(),
+        }
+    }
 
-        zorbist_aspect_evaluation
-            .key_lock_aspect_evaluation
-            .insert(key, (lock, aspect_evaluation));
+    pub fn from(bit_board: &mut bit_board::BitBoard, color: piece::Color) -> Self {
+        let mut zorbist_aspect_evaluation = Self::new();
+        zorbist_aspect_evaluation.insert(
+            bit_board.get_key(color),
+            bit_board.get_lock(color),
+            bit_board.get_aspect_evaluation_from_color(color),
+        );
 
         zorbist_aspect_evaluation
     }
 
+    pub fn get_aspect_evaluation_from_bit_board(
+        &self,
+        bit_board: bit_board::BitBoard,
+        color: piece::Color,
+    ) -> Option<&AspectEvaluation> {
+        self.get_aspect_evaluation(bit_board.get_key(color), bit_board.get_lock(color))
+    }
+
+    pub fn append(&mut self, other_zorbist_aspect_evaluation: Self) {
+        for (key, (lock, aspect_evaluation)) in other_zorbist_aspect_evaluation.inner {
+            self.insert(key, lock, aspect_evaluation);
+        }
+    }
+
+    fn get_aspect_evaluation(&self, mut key: u64, lock: u64) -> Option<&AspectEvaluation> {
+        if !self.inner.contains_key(&key) {
+            return None;
+        }
+
+        for index in 0..bit_constant::COLLIDEZOBRISTKEY.len() {
+            if self.inner.contains_key(&key) && lock == self.inner.get(&key).unwrap().0 {
+                break;
+            }
+
+            key ^= bit_constant::COLLIDEZOBRISTKEY[index];
+        }
+
+        assert!(self.inner.contains_key(&key), "Lock is not find!\n");
+        self.inner
+            .get(&key)
+            .map(|(_, aspect_evaluation)| aspect_evaluation)
+    }
+
+    fn insert(&mut self, key: u64, lock: u64, aspect_evaluation: AspectEvaluation) {
+        match self.get_aspect_evaluation(key, lock) {
+            Some(old_aspect_evaluation) => old_aspect_evaluation.append(aspect_evaluation),
+            None => {
+                self.inner.insert(key, (lock, aspect_evaluation));
+            }
+        }
+    }
+
     pub fn to_string(&self) -> String {
         let mut result = String::new();
-        for (key, (lock, aspect_evaluation)) in self.key_lock_aspect_evaluation.iter() {
+        for (key, (lock, aspect_evaluation)) in self.inner.iter() {
             result.push_str(&format!("key:  {:016x}\nlock: {:016x}\n", key, lock));
             result.push_str(&aspect_evaluation.to_string());
         }
 
         result.push_str(&format!(
             "zorbist_aspect_evaluation.len: {}\n",
-            self.key_lock_aspect_evaluation.len()
+            self.inner.len()
         ));
 
         result
     }
-
-    // pub fn get_move_possible(&self, mut key: u64, lock: u64) -> Option<&Vec<PerPossible>> {
-    //     for index in 0..bit_constant::COLLIDEZOBRISTKEY.len() {
-    //         if let Some(lock_all_possible) = self.key_lock_all_possible.get(&key) {
-    //             if lock_all_possible.lock == lock {
-    //                 return Some(&lock_all_possible.all_possible);
-    //             }
-    //         }
-
-    //         key ^= bit_constant::COLLIDEZOBRISTKEY[index];
-    //         assert!(false, "hashlock is not same! index:{index}\n");
-    //     }
-
-    //     None
-    // }
-
-    // pub fn to_string(&self) -> String {
-    //     let mut result = String::new();
-    //     for (key, lock_all_possible) in self.key_lock_all_possible.iter() {
-    //         result.push_str(&format!(
-    //             "hashkey:{:016x}\nmove_possible:\n{}\n",
-    //             key,
-    //             lock_all_possible.to_string()
-    //         ));
-    //     }
-    //     result.push_str(&format!(
-    //         "history_len:【{}】\n",
-    //         self.key_lock_all_possible.len()
-    //     ));
-
-    //     result
-    // }
 }
