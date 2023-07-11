@@ -162,22 +162,26 @@ impl ZorbistAspectEvaluation {
         }
     }
 
-    fn get_aspect_evaluation(&self, mut key: u64, lock: u64) -> Option<&AspectEvaluation> {
+    fn get_aspect_evaluation(&self, key: u64, lock: u64) -> Option<&AspectEvaluation> {
+        let mut real_key = key;
         if !self.inner.contains_key(&key) {
             return None;
         }
 
         for index in 0..bit_constant::COLLIDEZOBRISTKEY.len() {
-            if self.inner.contains_key(&key) && lock == self.inner.get(&key).unwrap().0 {
+            if self.inner.contains_key(&real_key) && lock == self.inner.get(&real_key).unwrap().0 {
                 break;
             }
 
-            key ^= bit_constant::COLLIDEZOBRISTKEY[index];
+            real_key ^= bit_constant::COLLIDEZOBRISTKEY[index];
         }
 
-        assert!(self.inner.contains_key(&key), "Lock is not find!\n");
+        assert!(
+            self.inner.contains_key(&real_key),
+            "Key:({key:016x})->RealKey:({real_key:016x})'s Lock({lock:016x}) is not find!\n"
+        );
         self.inner
-            .get(&key)
+            .get(&real_key)
             .map(|(_, aspect_evaluation)| aspect_evaluation)
     }
 
