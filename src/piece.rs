@@ -23,7 +23,7 @@ pub enum Kind {
     NoKind,
 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Piece {
     None,
     Some(Color, Kind),
@@ -118,10 +118,10 @@ pub fn other_ch(ch: char) -> char {
     }
 }
 
-pub fn get_ch(color: Color, kind: Kind) -> char {
+pub fn get_ch(color: Option<Color>, kind: Kind) -> char {
     match kind {
         Kind::NoKind => NULLCHAR,
-        _ => CHCHARS[color as usize][kind as usize],
+        _ => CHCHARS[color.unwrap() as usize][kind as usize],
     }
 }
 
@@ -137,7 +137,7 @@ impl Piece {
     pub fn ch(&self) -> char {
         match self {
             Self::None => NULLCHAR,
-            Self::Some(color, kind) => get_ch(*color, *kind),
+            Self::Some(color, kind) => get_ch(Some(*color), *kind),
         }
     }
 

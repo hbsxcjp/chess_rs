@@ -17,7 +17,7 @@ type OperateEvaluation = fn(
     eat_kind: piece::Kind,
 );
 
-#[derive(Debug)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub struct BitBoard {
     bottom_color: piece::Color,
     kinds: [piece::Kind; SEATCOUNT],
@@ -67,16 +67,19 @@ impl BitBoard {
         bit_board
     }
 
-    fn get_color(&self, index: usize) -> piece::Color {
-        if self.color_pieces[piece::Color::Red as usize] & bit_constant::MASK[index] == 0 {
-            piece::Color::Black
+    fn get_color(&self, index: usize) -> Option<piece::Color> {
+        let index_mask = bit_constant::MASK[index];
+        if self.color_pieces[piece::Color::Red as usize] & index_mask != 0 {
+            Some(piece::Color::Red)
+        } else if self.color_pieces[piece::Color::Black as usize] & index_mask != 0 {
+            Some(piece::Color::Black)
         } else {
-            piece::Color::Red
+            None
         }
     }
 
     fn get_move_from_index(&self, index: usize) -> bit_constant::BitAtom {
-        let color = self.get_color(index);
+        let color = self.get_color(index).unwrap();
         let kind = self.kinds[index];
         let result = match kind {
             piece::Kind::King => bit_constant::KINGMOVE[index],
@@ -153,14 +156,16 @@ impl BitBoard {
     }
 
     pub fn do_move(&mut self, from_index: usize, to_index: usize) -> piece::Kind {
-        let eat_kind = self.kinds[to_index];
-        self.operate_move(from_index, to_index, false, piece::Kind::NoKind);
-
-        eat_kind
+        self.operate_move(from_index, to_index, false, piece::Kind::NoKind)
     }
 
-    pub fn undo_move(&mut self, from_index: usize, to_index: usize, eat_kind: piece::Kind) {
-        self.operate_move(from_index, to_index, true, eat_kind);
+    pub fn undo_move(
+        &mut self,
+        from_index: usize,
+        to_index: usize,
+        eat_kind: piece::Kind,
+    ) -> piece::Kind {
+        self.operate_move(from_index, to_index, true, eat_kind)
     }
 
     fn operate_move(
@@ -168,46 +173,55 @@ impl BitBoard {
         from_index: usize,
         to_index: usize,
         is_undo: bool,
-        eat_kind: piece::Kind,
-    ) {
-        let start_index = if is_undo { to_index } else { from_index };
-        let end_index = if is_undo { from_index } else { to_index };
-        let start_kind = self.kinds[start_index];
-        let start_color_i = self.get_color(start_index) as usize;
-        let start_kind_i = start_kind as usize;
-        let from_bitatrom = bit_constant::MASK[from_index];
-        let to_bitatom = bit_constant::MASK[to_index];
-        let move_bitatom = from_bitatrom | to_bitatom;
+        mut eat_kind: piece::Kind,
+    ) -> piece::Kind {
+        let move_from_index = if is_undo { to_index } else { from_index };
+        let move_to_index = if is_undo { from_index } else { to_index };
+        let from_color_i = self.get_color(move_from_index).unwrap() as usize;
+        let from_kind = self.kinds[move_from_index];
+        let from_kind_i = from_kind as usize;
+        let move_bitatom = bit_constant::MASK[from_index] | bit_constant::MASK[to_index];
 
         // 清除原位置，置位新位置
-        self.kinds[end_index] = start_kind;
-        self.kinds[start_index] = eat_kind;
-
-        self.color_kind_pieces[start_color_i][start_kind_i] ^= move_bitatom;
-        self.color_pieces[start_color_i] ^= move_bitatom;
-
-        self.key ^= bit_constant::ZOBRISTKEY[start_color_i][start_kind_i][from_index]
-            ^ bit_constant::ZOBRISTKEY[start_color_i][start_kind_i][to_index];
-        self.lock ^= bit_constant::ZOBRISTLOCK[start_color_i][start_kind_i][from_index]
-            ^ bit_constant::ZOBRISTLOCK[start_color_i][start_kind_i][to_index];
-
-        if eat_kind != piece::Kind::NoKind {
-            let to_color_i = if start_color_i == 0 { 1 } else { 0 };
-            let eat_kind_i = eat_kind as usize;
-
-            self.color_kind_pieces[to_color_i][eat_kind_i] ^= to_bitatom;
-            self.color_pieces[to_color_i] ^= to_bitatom;
-
-            self.key ^= bit_constant::ZOBRISTKEY[to_color_i][eat_kind_i][to_index];
-            self.lock ^= bit_constant::ZOBRISTLOCK[to_color_i][eat_kind_i][to_index];
-
-            self.all_pieces ^= from_bitatrom;
-            self.rotate_all_pieces ^= bit_constant::ROTATEMASK[from_index];
-        } else {
-            self.all_pieces ^= move_bitatom;
-            self.rotate_all_pieces ^=
-                bit_constant::ROTATEMASK[from_index] | bit_constant::ROTATEMASK[to_index];
+        self.kinds[move_from_index] = eat_kind;
+        if !is_undo {
+            eat_kind = self.kinds[to_index];
         }
+        self.kinds[move_to_index] = from_kind;
+
+        // 设置颜色种类位棋盘
+        self.color_kind_pieces[from_color_i][from_kind_i] ^= move_bitatom;
+        self.color_pieces[from_color_i] ^= move_bitatom;
+
+        self.key ^= bit_constant::ZOBRISTKEY[from_color_i][from_kind_i][from_index]
+            ^ bit_constant::ZOBRISTKEY[from_color_i][from_kind_i][to_index];
+        self.lock ^= bit_constant::ZOBRISTLOCK[from_color_i][from_kind_i][from_index]
+            ^ bit_constant::ZOBRISTLOCK[from_color_i][from_kind_i][to_index];
+
+        match eat_kind {
+            piece::Kind::NoKind => {
+                self.all_pieces ^= move_bitatom;
+                self.rotate_all_pieces ^=
+                    bit_constant::ROTATEMASK[from_index] | bit_constant::ROTATEMASK[to_index];
+            }
+            _ => {
+                let to_color_i = if from_color_i == 0 { 1 } else { 0 };
+                let eat_kind_i = eat_kind as usize;
+                let eat_bitatom = bit_constant::MASK[to_index];
+
+                // 设置颜色种类位棋盘
+                self.color_kind_pieces[to_color_i][eat_kind_i] ^= eat_bitatom;
+                self.color_pieces[to_color_i] ^= eat_bitatom;
+
+                self.key ^= bit_constant::ZOBRISTKEY[to_color_i][eat_kind_i][to_index];
+                self.lock ^= bit_constant::ZOBRISTLOCK[to_color_i][eat_kind_i][to_index];
+
+                self.all_pieces ^= bit_constant::MASK[from_index];
+                self.rotate_all_pieces ^= bit_constant::ROTATEMASK[from_index];
+            }
+        }
+
+        eat_kind
     }
 
     fn add_evaluation_is_killed(
@@ -218,7 +232,8 @@ impl BitBoard {
         eat_kind: piece::Kind,
     ) {
         // 如是对方将帅的位置则直接可走，不用判断是否被将军（如加以判断，则会直接走棋吃将帅）；棋子已走，取终点位置颜色
-        let is_killed = eat_kind != piece::Kind::King && self.is_killed(self.get_color(to_index));
+        let is_killed =
+            eat_kind != piece::Kind::King && self.is_killed(self.get_color(to_index).unwrap());
         let count = if is_killed { 0 } else { 1 };
         // 扩展，增加其他功能
 

@@ -10,6 +10,7 @@ use crate::board;
 // use std::borrow::Borrow;
 // use crate::common;
 use crate::coord;
+use crate::piece;
 // use crate::coord::CoordPair;
 // use std::borrow::BorrowMut;
 use std::cell::RefCell;
@@ -23,6 +24,8 @@ pub struct Move {
 
     pub coordpair: coord::CoordPair,
     remark: RefCell<Option<String>>,
+
+    to_piece: RefCell<piece::Piece>,
 }
 
 impl Move {
@@ -33,6 +36,8 @@ impl Move {
 
             coordpair: coord::CoordPair::new(),
             remark: RefCell::new(None),
+
+            to_piece: RefCell::new(piece::Piece::None),
         })
     }
 
@@ -72,6 +77,8 @@ impl Move {
             } else {
                 Some(remark)
             }),
+
+            to_piece: RefCell::new(piece::Piece::None),
         });
 
         self.after
@@ -82,16 +89,24 @@ impl Move {
         amove
     }
 
-    pub fn from_to_indexs(self: &Rc<Self>) -> Vec<(usize, usize)> {
-        let mut from_to_indexs = Vec::new();
+    pub fn get_to_piece(&self) -> piece::Piece {
+        *self.to_piece.borrow()
+    }
+
+    pub fn set_to_piece(&self, piece: piece::Piece) {
+        *self.to_piece.borrow_mut() = piece;
+    }
+
+    pub fn before_moves(self: &Rc<Self>) -> Vec<Rc<Self>> {
+        let mut amove_vec = Vec::new();
         let mut amove = self.clone();
         while !amove.is_root() {
-            from_to_indexs.push(amove.coordpair.from_to_index());
+            amove_vec.push(amove.clone());
             amove = amove.before.as_ref().unwrap().upgrade().unwrap();
         }
-        from_to_indexs.reverse();
+        amove_vec.reverse();
 
-        from_to_indexs
+        amove_vec
     }
 
     pub fn to_string(&self, record_type: coord::RecordType, board: &board::Board) -> String {
