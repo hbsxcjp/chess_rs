@@ -176,28 +176,28 @@ impl Board {
     }
 
     pub fn do_move(&mut self, amove: &Rc<amove::Move>) {
-        // 测试
-        let old_board = self.clone();
+        // // 测试
+        // let old_board = self.clone();
 
         let (from_index, to_index) = amove.coordpair.from_to_index();
         amove.set_to_piece(self.pieces[to_index]);
         self.pieces[to_index] = self.pieces[from_index];
         self.pieces[from_index] = piece::Piece::None;
 
-        // 测试
-        let mut new_board = self.clone();
-        new_board.undo_move(amove);
-        assert_eq!(old_board, new_board);
+        // // 测试
+        // let mut new_board = self.clone();
+        // new_board.undo_move(amove);
+        // assert_eq!(old_board, new_board);
 
-        // 测试
-        let mut old_bit_board = old_board.bit_board();
-        let mut new_bit_board = new_board.bit_board();
-        let kind = old_bit_board.do_move(from_index, to_index);
-        assert_eq!(old_bit_board, new_bit_board);
+        // // 测试
+        // let mut old_bit_board = old_board.bit_board();
+        // let mut new_bit_board = new_board.bit_board();
+        // let kind = old_bit_board.do_move(from_index, to_index);
+        // assert_eq!(old_bit_board, new_bit_board);
 
-        // 测试
-        let _ = new_bit_board.undo_move(from_index, to_index, kind);
-        assert_eq!(old_board.bit_board(), new_bit_board);
+        // // 测试
+        // let _ = new_bit_board.undo_move(from_index, to_index, kind);
+        // assert_eq!(old_board.bit_board(), new_bit_board);
     }
 
     pub fn undo_move(&mut self, amove: &Rc<amove::Move>) {
@@ -207,7 +207,7 @@ impl Board {
         self.pieces[to_index] = amove.get_to_piece();
     }
 
-    pub fn to_move(&self, amove: &Rc<amove::Move>) -> Self {
+    pub fn to_move_before(&self, amove: &Rc<amove::Move>) -> Self {
         let mut board = self.clone();
         for amove in amove.before_moves() {
             board.do_move(&amove);

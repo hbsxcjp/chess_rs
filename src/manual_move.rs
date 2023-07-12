@@ -1,6 +1,7 @@
 #![allow(dead_code)]
 
 use crate::coord::CoordPair;
+use crate::evaluation;
 use crate::{amove, common, coord};
 use encoding::all::GBK;
 use encoding::{DecoderTrap, Encoding};
@@ -101,7 +102,7 @@ impl ManualMove {
             let mut before_move = root_move.clone();
             let mut is_other = false;
             // 当前棋子非根，或为根尚无后续棋子/当前棋子为根，且有后继棋子时，表明深度搜索已经回退到根，已经没有后续棋子了
-            while pos < input.len() && (!before_move.is_root() || before_move.after().is_empty()) {
+            while pos < input.len() && (!before_move.is_root() || before_move.after_len() == 0) {
                 let (data, remark) = get_data_remark(&mut pos);
                 //# 一步棋的起点和终点有简单的加密计算，读入时需要还原
                 let fcolrow = __sub(data[0], (0x18 + keyxyf as usize) as u8);
@@ -178,12 +179,12 @@ impl ManualMove {
         let mut result = Vec::new();
 
         common::write_string(&mut result, &self.root_move.remark());
-        common::write_be_u32(&mut result, self.root_move.after().len() as u32);
+        common::write_be_u32(&mut result, self.root_move.after_len() as u32);
         for amove in self.get_all_after_moves() {
             common::write_coordpair(&mut result, &amove.coordpair);
 
             common::write_string(&mut result, &amove.remark());
-            common::write_be_u32(&mut result, amove.after().len() as u32);
+            common::write_be_u32(&mut result, amove.after_len() as u32);
         }
 
         result
@@ -266,6 +267,20 @@ impl ManualMove {
         }
 
         all_after_moves
+    }
+
+    pub fn get_zorbist_aspect_evaluation(&self) -> evaluation::ZorbistAspectEvaluation {
+        let mut zorbist_aspect_evaluation = evaluation::ZorbistAspectEvaluation::new();
+        for amove in self.get_all_after_moves() {
+            let mut bit_board = self.board.to_move_before(&amove).bit_board();
+            let from_to_index = amove.coordpair.from_to_index();
+            let color = bit_board.get_color(from_to_index.0).unwrap();
+            let temp = bit_board.get_zorbist_evaluation_from_to_index(color, from_to_index);
+
+            zorbist_aspect_evaluation.append(temp);
+        }
+
+        zorbist_aspect_evaluation
     }
 
     pub fn to_string(&self, record_type: coord::RecordType) -> String {

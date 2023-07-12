@@ -10,6 +10,7 @@ use crate::{bit_board, bit_constant, coord, piece};
 pub struct Evaluation {
     is_killed: bool,
 
+    eat_kind: piece::Kind,
     count: usize,
 }
 
@@ -30,8 +31,12 @@ pub struct ZorbistAspectEvaluation {
 
 // 后期根据需要扩展
 impl Evaluation {
-    pub fn new(is_killed: bool, count: usize) -> Evaluation {
-        Evaluation { is_killed, count }
+    pub fn new(is_killed: bool, eat_kind: piece::Kind, count: usize) -> Evaluation {
+        Evaluation {
+            is_killed,
+            eat_kind,
+            count,
+        }
     }
 
     pub fn increase(&mut self) {
@@ -39,7 +44,7 @@ impl Evaluation {
     }
 
     pub fn to_string(&self) -> String {
-        format!("{}-{} ", self.is_killed, self.count)
+        format!("{},{:?},{}", self.is_killed, self.eat_kind, self.count)
     }
 }
 
@@ -64,7 +69,7 @@ impl IndexEvaluation {
         for (to_index, evaluation) in self.inner.iter() {
             let coord = coord::Coord::from_index(*to_index).unwrap();
             result.push_str(&format!(
-                "{}-{}",
+                "[{} {}] ",
                 coord.to_string(coord::RecordType::Txt),
                 evaluation.to_string()
             ));
@@ -116,13 +121,13 @@ impl AspectEvaluation {
         for (from_index, index_evaluation) in self.inner.borrow().iter() {
             let coord = coord::Coord::from_index(*from_index).unwrap();
             result.push_str(&format!(
-                "{} => {}",
+                "{}=>{}",
                 coord.to_string(coord::RecordType::Txt),
                 index_evaluation.to_string()
             ));
         }
         result.push_str(&format!(
-            "aspect_evaluation.len: {}\n",
+            "aspect_evaluation.len:{}\n",
             self.inner.borrow().len()
         ));
 
@@ -137,15 +142,13 @@ impl ZorbistAspectEvaluation {
         }
     }
 
-    pub fn from(bit_board: &mut bit_board::BitBoard, color: piece::Color) -> Self {
-        let mut zorbist_aspect_evaluation = Self::new();
-        zorbist_aspect_evaluation.insert(
-            bit_board.get_key(color),
-            bit_board.get_lock(color),
-            bit_board.get_aspect_evaluation_from_color(color),
-        );
-
-        zorbist_aspect_evaluation
+    pub fn insert(&mut self, key: u64, lock: u64, aspect_evaluation: AspectEvaluation) {
+        match self.get_aspect_evaluation(key, lock) {
+            Some(old_aspect_evaluation) => old_aspect_evaluation.append(aspect_evaluation),
+            None => {
+                self.inner.insert(key, (lock, aspect_evaluation));
+            }
+        }
     }
 
     pub fn get_aspect_evaluation_from_bit_board(
@@ -183,15 +186,6 @@ impl ZorbistAspectEvaluation {
         self.inner
             .get(&real_key)
             .map(|(_, aspect_evaluation)| aspect_evaluation)
-    }
-
-    fn insert(&mut self, key: u64, lock: u64, aspect_evaluation: AspectEvaluation) {
-        match self.get_aspect_evaluation(key, lock) {
-            Some(old_aspect_evaluation) => old_aspect_evaluation.append(aspect_evaluation),
-            None => {
-                self.inner.insert(key, (lock, aspect_evaluation));
-            }
-        }
     }
 
     pub fn to_string(&self) -> String {

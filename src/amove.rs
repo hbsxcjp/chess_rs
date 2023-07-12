@@ -52,6 +52,10 @@ impl Move {
         }
     }
 
+    pub fn after_len(&self) -> usize {
+        self.after.borrow().as_ref().unwrap_or(&vec![]).len()
+    }
+
     pub fn after(&self) -> Vec<Rc<Self>> {
         self.after.borrow().clone().unwrap_or(vec![])
     }
@@ -99,24 +103,32 @@ impl Move {
 
     pub fn before_moves(self: &Rc<Self>) -> Vec<Rc<Self>> {
         let mut amove_vec = Vec::new();
-        let mut amove = self.clone();
+        let mut amove = self.before().unwrap();
         while !amove.is_root() {
             amove_vec.push(amove.clone());
-            amove = amove.before.as_ref().unwrap().upgrade().unwrap();
+            amove = amove.before().unwrap();
         }
         amove_vec.reverse();
 
         amove_vec
     }
 
-    pub fn to_string(&self, record_type: coord::RecordType, board: &board::Board) -> String {
+    pub fn to_string(
+        self: &Rc<Self>,
+        record_type: coord::RecordType,
+        board: &board::Board,
+    ) -> String {
         let coordpair_string = if self.is_root() {
             String::new()
         } else {
             if record_type == coord::RecordType::PgnZh {
-                let before = self.before.as_ref().unwrap().upgrade().unwrap().clone();
-                let board = board.to_move(&before);
-                board.get_zhstr_from_coordpair(&self.coordpair)
+                if self.is_root() {
+                    String::new()
+                } else {
+                    board
+                        .to_move_before(self)
+                        .get_zhstr_from_coordpair(&self.coordpair)
+                }
             } else {
                 self.coordpair.to_string(record_type)
             }
@@ -127,7 +139,7 @@ impl Move {
             remark = format!("{{{}}}", remark);
         }
 
-        let num = self.after().len();
+        let num = self.after_len();
         let after_num = if num > 0 {
             format!("({})", num)
         } else {

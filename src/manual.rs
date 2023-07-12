@@ -1,7 +1,6 @@
 #![allow(dead_code)]
 
 use crate::coord::{self, COLCOUNT, ROWCOUNT, SEATCOUNT};
-use crate::manual_move;
 use encoding::all::GBK;
 use encoding::{DecoderTrap, Encoding};
 // use regex::Error;
@@ -9,9 +8,9 @@ use encoding::{DecoderTrap, Encoding};
 // use std::io::prelude::*;
 // use std::io::BufReader;
 // use serde::de::value;
-// use crate::bit_constant;
 use crate::board;
 use crate::common;
+use crate::manual_move;
 use std::borrow::Borrow;
 use std::collections::BTreeMap;
 // use std::rc::Rc;
@@ -309,6 +308,8 @@ impl Manual {
 
 #[cfg(test)]
 mod tests {
+    use crate::evaluation;
+
     use super::*;
 
     #[test]
@@ -662,9 +663,12 @@ mod tests {
             format!("tests/output/{}.{}", file_name, record_type.ext_name())
         }
 
+        let mut zorbist_aspect_evaluation = evaluation::ZorbistAspectEvaluation::new();
         for (file_name, manual_string) in file_name_manual_strings {
             if let Ok(manual) = Manual::from(&format!("tests/xqf/{file_name}.xqf")) {
                 assert_eq!(manual_string, manual.to_string(coord::RecordType::Txt));
+                zorbist_aspect_evaluation
+                    .append(manual.manual_move.get_zorbist_aspect_evaluation());
 
                 // 输出内容以备查看
                 for record_type in [
@@ -685,5 +689,11 @@ mod tests {
                 }
             }
         }
+
+        std::fs::write(
+            format!("tests/output/zobrist_evaluation.txt"),
+            zorbist_aspect_evaluation.to_string(),
+        )
+        .expect("Write Err.");
     }
 }

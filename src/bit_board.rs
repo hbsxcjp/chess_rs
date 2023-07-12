@@ -12,8 +12,7 @@ use crate::piece::{self, COLORCOUNT, KINDCOUNT};
 type OperateEvaluation = fn(
     &BitBoard,
     aspect_evaluation: &mut evaluation::AspectEvaluation,
-    from_index: usize,
-    to_index: usize,
+    from_to_index: (usize, usize),
     eat_kind: piece::Kind,
 );
 
@@ -67,7 +66,7 @@ impl BitBoard {
         bit_board
     }
 
-    fn get_color(&self, index: usize) -> Option<piece::Color> {
+    pub fn get_color(&self, index: usize) -> Option<piece::Color> {
         let index_mask = bit_constant::MASK[index];
         if self.color_pieces[piece::Color::Red as usize] & index_mask != 0 {
             Some(piece::Color::Red)
@@ -227,10 +226,10 @@ impl BitBoard {
     fn add_evaluation_is_killed(
         &self,
         aspect_evaluation: &mut evaluation::AspectEvaluation,
-        from_index: usize,
-        to_index: usize,
+        from_to_index: (usize, usize),
         eat_kind: piece::Kind,
     ) {
+        let (from_index, to_index) = from_to_index;
         // 如是对方将帅的位置则直接可走，不用判断是否被将军（如加以判断，则会直接走棋吃将帅）；棋子已走，取终点位置颜色
         let is_killed =
             eat_kind != piece::Kind::King && self.is_killed(self.get_color(to_index).unwrap());
@@ -240,23 +239,48 @@ impl BitBoard {
         aspect_evaluation.insert_evaluation(
             from_index,
             to_index,
-            evaluation::Evaluation::new(is_killed, count),
+            evaluation::Evaluation::new(is_killed, eat_kind, count),
         );
     }
 
-    // 执行某一着后的效果(委托函数可叠加)
-    fn operate_evaluation_domove_undo_move(
+    // 执行某一着不回退
+    fn operate_evaluation_by_do_move(
         &mut self,
         aspect_evaluation: &mut evaluation::AspectEvaluation,
-        from_index: usize,
-        to_index: usize,
+        from_to_index: (usize, usize),
         operate_evaluation: OperateEvaluation,
     ) {
+        let (from_index, to_index) = from_to_index;
         let eat_kind = self.do_move(from_index, to_index);
+        operate_evaluation(self, aspect_evaluation, from_to_index, eat_kind);
+    }
 
-        operate_evaluation(self, aspect_evaluation, from_index, to_index, eat_kind);
+    // 执行某一着后回退（保持原局面不变）
+    fn operate_evaluation_by_do_move_undo(
+        &mut self,
+        aspect_evaluation: &mut evaluation::AspectEvaluation,
+        from_to_index: (usize, usize),
+        operate_evaluation: OperateEvaluation,
+    ) {
+        let (from_index, to_index) = from_to_index;
+        let eat_kind = self.do_move(from_index, to_index);
+        operate_evaluation(self, aspect_evaluation, from_to_index, eat_kind);
 
         self.undo_move(from_index, to_index, eat_kind);
+    }
+
+    fn get_aspect_evaluation(
+        &mut self,
+        from_to_index: (usize, usize),
+    ) -> evaluation::AspectEvaluation {
+        let mut aspect_evaluation = evaluation::AspectEvaluation::new();
+        self.operate_evaluation_by_do_move(
+            &mut aspect_evaluation,
+            from_to_index,
+            Self::add_evaluation_is_killed,
+        );
+
+        aspect_evaluation
     }
 
     fn get_aspect_evaluation_from_index(
@@ -266,10 +290,9 @@ impl BitBoard {
         let mut aspect_evaluation = evaluation::AspectEvaluation::from(from_index);
         for to_index in bit_constant::get_indexs_from_bitatom(self.get_move_from_index(from_index))
         {
-            self.operate_evaluation_domove_undo_move(
+            self.operate_evaluation_by_do_move_undo(
                 &mut aspect_evaluation,
-                from_index,
-                to_index,
+                (from_index, to_index),
                 Self::add_evaluation_is_killed,
             );
         }
@@ -314,6 +337,42 @@ impl BitBoard {
 
     pub fn get_lock(&self, color: piece::Color) -> u64 {
         self.lock ^ bit_constant::COLORZOBRISTLOCK[color as usize]
+    }
+
+    fn set_zorbist_evaluation0(
+        &self,
+        color: piece::Color,
+        zorbist_aspect_evaluation: &mut evaluation::ZorbistAspectEvaluation,
+        aspect_evaluation: evaluation::AspectEvaluation,
+    ) {
+        zorbist_aspect_evaluation.insert(
+            self.get_key(color),
+            self.get_lock(color),
+            aspect_evaluation,
+        );
+    }
+
+    pub fn get_zorbist_evaluation_from_color(
+        &mut self,
+        color: piece::Color,
+    ) -> evaluation::ZorbistAspectEvaluation {
+        let mut zorbist_aspect_evaluation = evaluation::ZorbistAspectEvaluation::new();
+        let aspect_evaluation = self.get_aspect_evaluation_from_color(color);
+        self.set_zorbist_evaluation0(color, &mut zorbist_aspect_evaluation, aspect_evaluation);
+
+        zorbist_aspect_evaluation
+    }
+
+    pub fn get_zorbist_evaluation_from_to_index(
+        &mut self,
+        color: piece::Color,
+        from_to_index: (usize, usize),
+    ) -> evaluation::ZorbistAspectEvaluation {
+        let mut zorbist_aspect_evaluation = evaluation::ZorbistAspectEvaluation::new();
+        let aspect_evaluation = self.get_aspect_evaluation(from_to_index);
+        self.set_zorbist_evaluation0(color, &mut zorbist_aspect_evaluation, aspect_evaluation);
+
+        zorbist_aspect_evaluation
     }
 
     pub fn to_string(&mut self) -> String {
@@ -867,7 +926,7 @@ length: 6 	non_zero: 5
                 let mut result = format!("aspect_evaluation_string:\n");
                 for color in [piece::Color::Red, piece::Color::Black] {
                     let zorbist_aspect_evaluation =
-                        evaluation::ZorbistAspectEvaluation::from(bit_board, color);
+                        bit_board.get_zorbist_evaluation_from_color(color);
                     result.push_str(&zorbist_aspect_evaluation.to_string());
                 }
 
