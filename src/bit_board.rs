@@ -269,7 +269,7 @@ impl BitBoard {
         self.undo_move(from_index, to_index, eat_kind);
     }
 
-    fn get_aspect_evaluation(
+    pub fn get_aspect_evaluation(
         &mut self,
         from_to_index: (usize, usize),
     ) -> evaluation::AspectEvaluation {
@@ -324,13 +324,6 @@ impl BitBoard {
         })
     }
 
-    pub fn get_aspect_evaluation_from_color(
-        &mut self,
-        color: piece::Color,
-    ) -> evaluation::AspectEvaluation {
-        self.get_aspect_evaluation_from_color_kind(color, piece::Kind::NoKind)
-    }
-
     pub fn get_key(&self, color: piece::Color) -> u64 {
         self.key ^ bit_constant::COLORZOBRISTKEY[color as usize]
     }
@@ -339,33 +332,15 @@ impl BitBoard {
         self.lock ^ bit_constant::COLORZOBRISTLOCK[color as usize]
     }
 
-    fn set_zorbist_evaluation0(
-        &self,
-        color: piece::Color,
-        zorbist_aspect_evaluation: &mut evaluation::ZorbistAspectEvaluation,
-        aspect_evaluation: evaluation::AspectEvaluation,
-    ) {
-        zorbist_aspect_evaluation.insert(
-            self.get_key(color),
-            self.get_lock(color),
-            aspect_evaluation,
-        );
-    }
-
     pub fn get_zorbist_evaluation_from_color(
         &mut self,
         color: piece::Color,
     ) -> evaluation::ZorbistAspectEvaluation {
-        let mut zorbist_aspect_evaluation = evaluation::ZorbistAspectEvaluation::new();
-        let aspect_evaluation = self.get_aspect_evaluation_from_color(color);
-        // self.set_zorbist_evaluation0(color, &mut zorbist_aspect_evaluation, aspect_evaluation);
-        zorbist_aspect_evaluation.insert(
+        evaluation::ZorbistAspectEvaluation::from(
             self.get_key(color),
             self.get_lock(color),
-            aspect_evaluation,
-        );
-
-        zorbist_aspect_evaluation
+            self.get_aspect_evaluation_from_color_kind(color, piece::Kind::NoKind),
+        )
     }
 
     pub fn get_zorbist_evaluation_from_to_index(
@@ -373,11 +348,11 @@ impl BitBoard {
         color: piece::Color,
         from_to_index: (usize, usize),
     ) -> evaluation::ZorbistAspectEvaluation {
-        let mut zorbist_aspect_evaluation = evaluation::ZorbistAspectEvaluation::new();
-        let aspect_evaluation = self.get_aspect_evaluation(from_to_index);
-        self.set_zorbist_evaluation0(color, &mut zorbist_aspect_evaluation, aspect_evaluation);
-
-        zorbist_aspect_evaluation
+        evaluation::ZorbistAspectEvaluation::from(
+            self.get_key(color),
+            self.get_lock(color),
+            self.get_aspect_evaluation(from_to_index),
+        )
     }
 
     pub fn to_string(&mut self) -> String {

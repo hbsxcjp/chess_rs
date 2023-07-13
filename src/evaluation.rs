@@ -142,6 +142,13 @@ impl ZorbistAspectEvaluation {
         }
     }
 
+    pub fn from(key: u64, lock: u64, aspect_evaluation: AspectEvaluation) -> Self {
+        let mut zorbist_aspect_evaluation = Self::new();
+        zorbist_aspect_evaluation.insert(key, lock, aspect_evaluation);
+
+        zorbist_aspect_evaluation
+    }
+
     pub fn insert(&mut self, key: u64, lock: u64, aspect_evaluation: AspectEvaluation) {
         match self.get_aspect_evaluation(key, lock) {
             Some(old_aspect_evaluation) => old_aspect_evaluation.append(aspect_evaluation),
