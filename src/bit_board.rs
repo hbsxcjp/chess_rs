@@ -358,7 +358,12 @@ impl BitBoard {
     ) -> evaluation::ZorbistAspectEvaluation {
         let mut zorbist_aspect_evaluation = evaluation::ZorbistAspectEvaluation::new();
         let aspect_evaluation = self.get_aspect_evaluation_from_color(color);
-        self.set_zorbist_evaluation0(color, &mut zorbist_aspect_evaluation, aspect_evaluation);
+        // self.set_zorbist_evaluation0(color, &mut zorbist_aspect_evaluation, aspect_evaluation);
+        zorbist_aspect_evaluation.insert(
+            self.get_key(color),
+            self.get_lock(color),
+            aspect_evaluation,
+        );
 
         zorbist_aspect_evaluation
     }
