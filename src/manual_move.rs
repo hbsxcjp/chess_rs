@@ -275,7 +275,8 @@ impl ManualMove {
             let mut bit_board = self.board.to_move_before(&amove).bit_board();
             let from_to_index = amove.coordpair.from_to_index();
             let color = bit_board.get_color(from_to_index.0).unwrap();
-            let temp = bit_board.get_zorbist_evaluation_from_to_index(color, from_to_index);
+            let aspect_evaluation = bit_board.get_aspect_evaluation_from_to_index(from_to_index);
+            let temp = bit_board.get_zorbist_evaluation(color, aspect_evaluation);
 
             zorbist_aspect_evaluation.append(temp);
         }
