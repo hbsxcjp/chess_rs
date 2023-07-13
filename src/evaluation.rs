@@ -4,7 +4,7 @@
 use std::cell::RefCell;
 use std::collections::HashMap;
 
-use crate::{bit_board, bit_constant, coord, piece};
+use crate::{bit_constant, coord, piece};
 
 #[derive(Debug)]
 pub struct Evaluation {
@@ -25,7 +25,7 @@ pub struct AspectEvaluation {
 }
 
 // #[derive(Debug)]
-pub struct ZorbistAspectEvaluation {
+pub struct ZorbistEvaluation {
     inner: HashMap<u64, (u64, AspectEvaluation)>,
 }
 
@@ -39,7 +39,7 @@ impl Evaluation {
         }
     }
 
-    pub fn increase(&mut self) {
+    pub fn exists_operate(&mut self) {
         self.count += 1;
     }
 
@@ -58,10 +58,9 @@ impl IndexEvaluation {
     pub fn insert(&mut self, to_index: usize, evaluation: Evaluation) {
         if !self.inner.contains_key(&to_index) {
             self.inner.insert(to_index, evaluation);
-            return;
+        } else {
+            self.inner.get_mut(&to_index).unwrap().exists_operate();
         }
-
-        self.inner.get_mut(&to_index).unwrap().increase();
     }
 
     pub fn to_string(&self) -> String {
@@ -113,8 +112,12 @@ impl AspectEvaluation {
 
     pub fn append(&self, other_aspect_evaluation: Self) {
         for (from_index, index_evaluation) in other_aspect_evaluation.inner.into_inner() {
-            for (to_index, evaluation) in index_evaluation.inner {
-                self.insert_evaluation(from_index, to_index, evaluation);
+            if index_evaluation.inner.is_empty() {
+                self.inner.borrow_mut().insert(from_index, index_evaluation);
+            } else {
+                for (to_index, evaluation) in index_evaluation.inner {
+                    self.insert_evaluation(from_index, to_index, evaluation);
+                }
             }
         }
     }
@@ -138,7 +141,7 @@ impl AspectEvaluation {
     }
 }
 
-impl ZorbistAspectEvaluation {
+impl ZorbistEvaluation {
     pub fn new() -> Self {
         Self {
             inner: HashMap::new(),
@@ -146,10 +149,10 @@ impl ZorbistAspectEvaluation {
     }
 
     pub fn from(key: u64, lock: u64, aspect_evaluation: AspectEvaluation) -> Self {
-        let mut zorbist_aspect_evaluation = Self::new();
-        zorbist_aspect_evaluation.insert(key, lock, aspect_evaluation);
+        let mut zorbist_evaluation = Self::new();
+        zorbist_evaluation.insert(key, lock, aspect_evaluation);
 
-        zorbist_aspect_evaluation
+        zorbist_evaluation
     }
 
     pub fn insert(&mut self, key: u64, lock: u64, aspect_evaluation: AspectEvaluation) {
@@ -161,21 +164,13 @@ impl ZorbistAspectEvaluation {
         }
     }
 
-    pub fn get_aspect_evaluation_from_bit_board(
-        &self,
-        bit_board: bit_board::BitBoard,
-        color: piece::Color,
-    ) -> Option<&AspectEvaluation> {
-        self.get_aspect_evaluation(bit_board.get_key(color), bit_board.get_lock(color))
-    }
-
-    pub fn append(&mut self, other_zorbist_aspect_evaluation: Self) {
-        for (key, (lock, aspect_evaluation)) in other_zorbist_aspect_evaluation.inner {
+    pub fn append(&mut self, other_zorbist_evaluation: Self) {
+        for (key, (lock, aspect_evaluation)) in other_zorbist_evaluation.inner {
             self.insert(key, lock, aspect_evaluation);
         }
     }
 
-    fn get_aspect_evaluation(&self, key: u64, lock: u64) -> Option<&AspectEvaluation> {
+    pub fn get_aspect_evaluation(&self, key: u64, lock: u64) -> Option<&AspectEvaluation> {
         let mut real_key = key;
         if !self.inner.contains_key(&key) {
             return None;

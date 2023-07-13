@@ -663,12 +663,11 @@ mod tests {
             format!("tests/output/{}.{}", file_name, record_type.ext_name())
         }
 
-        let mut zorbist_aspect_evaluation = evaluation::ZorbistAspectEvaluation::new();
+        let mut zorbist_aspect_evaluation = evaluation::ZorbistEvaluation::new();
         for (file_name, manual_string) in file_name_manual_strings {
             if let Ok(manual) = Manual::from(&format!("tests/xqf/{file_name}.xqf")) {
                 assert_eq!(manual_string, manual.to_string(coord::RecordType::Txt));
-                zorbist_aspect_evaluation
-                    .append(manual.manual_move.get_zorbist_aspect_evaluation());
+                zorbist_aspect_evaluation.append(manual.manual_move.get_zorbist_evaluation());
 
                 // 输出内容以备查看
                 for record_type in [
@@ -682,8 +681,8 @@ mod tests {
                     if std::fs::File::open(&file_path).is_err() {
                         let _ = manual.write(&file_path);
                     }
-                    zorbist_aspect_evaluation
-                        .append(manual.manual_move.get_zorbist_aspect_evaluation());
+                    // zorbist_aspect_evaluation
+                    //     .append(manual.manual_move.get_zorbist_aspect_evaluation());
 
                     if let Ok(manual) = Manual::from(&file_path) {
                         assert_eq!(manual_string, manual.to_string(coord::RecordType::Txt));

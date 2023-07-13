@@ -1,6 +1,9 @@
 #![allow(dead_code)]
 #![allow(unused_imports)]
 
+use std::rc::Rc;
+
+use crate::amove;
 use crate::bit_constant;
 use crate::board;
 use crate::coord::{
@@ -223,7 +226,7 @@ impl BitBoard {
         eat_kind
     }
 
-    fn add_evaluation_is_killed(
+    fn operate_evaluation_is_killed(
         &self,
         aspect_evaluation: &mut evaluation::AspectEvaluation,
         from_to_index: (usize, usize),
@@ -243,18 +246,6 @@ impl BitBoard {
         );
     }
 
-    // 执行某一着不回退
-    fn operate_evaluation_by_do_move(
-        &mut self,
-        aspect_evaluation: &mut evaluation::AspectEvaluation,
-        from_to_index: (usize, usize),
-        operate_evaluation: OperateEvaluation,
-    ) {
-        let (from_index, to_index) = from_to_index;
-        let eat_kind = self.do_move(from_index, to_index);
-        operate_evaluation(self, aspect_evaluation, from_to_index, eat_kind);
-    }
-
     // 执行某一着后回退（保持原局面不变）
     fn operate_evaluation_by_do_move_undo(
         &mut self,
@@ -269,79 +260,94 @@ impl BitBoard {
         self.undo_move(from_index, to_index, eat_kind);
     }
 
-    pub fn get_aspect_evaluation_from_to_index(
-        &mut self,
-        from_to_index: (usize, usize),
-    ) -> evaluation::AspectEvaluation {
-        let mut aspect_evaluation = evaluation::AspectEvaluation::new();
-        self.operate_evaluation_by_do_move(
-            &mut aspect_evaluation,
-            from_to_index,
-            Self::add_evaluation_is_killed,
-        );
-
-        aspect_evaluation
-    }
-
-    fn get_aspect_evaluation_from_index(
-        &mut self,
-        from_index: usize,
-    ) -> evaluation::AspectEvaluation {
+    fn get_aspect_evaluation_index(&mut self, from_index: usize) -> evaluation::AspectEvaluation {
         let mut aspect_evaluation = evaluation::AspectEvaluation::from(from_index);
         for to_index in bit_constant::get_indexs_from_bitatom(self.get_move_from_index(from_index))
         {
             self.operate_evaluation_by_do_move_undo(
                 &mut aspect_evaluation,
                 (from_index, to_index),
-                Self::add_evaluation_is_killed,
+                Self::operate_evaluation_is_killed,
             );
         }
 
         aspect_evaluation
     }
 
-    fn get_aspect_evaluation_from_bitatom(
+    fn get_aspect_evaluation_bitatom(
         &mut self,
         bit_atom: bit_constant::BitAtom,
     ) -> evaluation::AspectEvaluation {
         let aspect_evaluation = evaluation::AspectEvaluation::new();
         for from_index in bit_constant::get_indexs_from_bitatom(bit_atom) {
-            aspect_evaluation.append(self.get_aspect_evaluation_from_index(from_index));
+            aspect_evaluation.append(self.get_aspect_evaluation_index(from_index));
         }
 
         aspect_evaluation
     }
 
     // kind == piece::Kind::NoKind，取全部种类棋子
-    fn get_aspect_evaluation_from_color_kind(
+    fn get_aspect_evaluation_color_kind(
         &mut self,
         color: piece::Color,
         kind: piece::Kind,
     ) -> evaluation::AspectEvaluation {
-        self.get_aspect_evaluation_from_bitatom(match kind {
+        self.get_aspect_evaluation_bitatom(match kind {
             piece::Kind::NoKind => self.color_pieces[color as usize],
             _ => self.color_kind_pieces[color as usize][kind as usize],
         })
     }
 
-    pub fn get_key(&self, color: piece::Color) -> u64 {
+    fn get_key(&self, color: piece::Color) -> u64 {
         self.key ^ bit_constant::COLORZOBRISTKEY[color as usize]
     }
 
-    pub fn get_lock(&self, color: piece::Color) -> u64 {
+    fn get_lock(&self, color: piece::Color) -> u64 {
         self.lock ^ bit_constant::COLORZOBRISTLOCK[color as usize]
     }
 
-    pub fn get_zorbist_evaluation(
-        &mut self,
+    fn get_zorbist_evaluation(
+        &self,
         color: piece::Color,
         aspect_evaluation: evaluation::AspectEvaluation,
-    ) -> evaluation::ZorbistAspectEvaluation {
-        evaluation::ZorbistAspectEvaluation::from(
+    ) -> evaluation::ZorbistEvaluation {
+        evaluation::ZorbistEvaluation::from(
             self.get_key(color),
             self.get_lock(color),
             aspect_evaluation,
         )
+    }
+
+    pub fn get_zorbist_evaluation_color(
+        &mut self,
+        color: piece::Color,
+    ) -> evaluation::ZorbistEvaluation {
+        let aspect_evaluation = self.get_aspect_evaluation_color_kind(color, piece::Kind::NoKind);
+        self.get_zorbist_evaluation(color, aspect_evaluation)
+    }
+
+    pub fn get_zorbist_evaluation_amove(
+        &mut self,
+        amove: &Rc<amove::Move>,
+    ) -> evaluation::ZorbistEvaluation {
+        let from_to_index = amove.coordpair.from_to_index();
+        let color = self.get_color(from_to_index.0).unwrap();
+        let mut aspect_evaluation = evaluation::AspectEvaluation::new();
+        self.operate_evaluation_by_do_move_undo(
+            &mut aspect_evaluation,
+            from_to_index,
+            Self::operate_evaluation_is_killed,
+        );
+
+        self.get_zorbist_evaluation(color, aspect_evaluation)
+    }
+
+    pub fn get_aspect_evaluation<'a, 'b>(
+        &'a self,
+        color: piece::Color,
+        zorbist_evaluation: &'b evaluation::ZorbistEvaluation,
+    ) -> Option<&'b evaluation::AspectEvaluation> {
+        zorbist_evaluation.get_aspect_evaluation(self.get_key(color), self.get_lock(color))
     }
 
     pub fn to_string(&mut self) -> String {
@@ -894,10 +900,7 @@ length: 6 	non_zero: 5
             fn to_aspect_evaluation_string(bit_board: &mut BitBoard) -> String {
                 let mut result = format!("aspect_evaluation_string:\n");
                 for color in [piece::Color::Red, piece::Color::Black] {
-                    let aspect_evaluation =
-                        bit_board.get_aspect_evaluation_from_color_kind(color, piece::Kind::NoKind);
-                    let zorbist_aspect_evaluation =
-                        bit_board.get_zorbist_evaluation(color, aspect_evaluation);
+                    let zorbist_aspect_evaluation = bit_board.get_zorbist_evaluation_color(color);
                     result.push_str(&zorbist_aspect_evaluation.to_string());
                 }
 

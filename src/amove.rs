@@ -102,15 +102,15 @@ impl Move {
     }
 
     pub fn before_moves(self: &Rc<Self>) -> Vec<Rc<Self>> {
-        let mut amove_vec = Vec::new();
+        let mut before_moves = Vec::new();
         let mut amove = self.before().unwrap();
         while !amove.is_root() {
-            amove_vec.push(amove.clone());
+            before_moves.insert(0, amove.clone());
             amove = amove.before().unwrap();
         }
-        amove_vec.reverse();
+        // before_moves.reverse();
 
-        amove_vec
+        before_moves
     }
 
     pub fn to_string(

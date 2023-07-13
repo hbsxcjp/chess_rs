@@ -269,19 +269,17 @@ impl ManualMove {
         all_after_moves
     }
 
-    pub fn get_zorbist_aspect_evaluation(&self) -> evaluation::ZorbistAspectEvaluation {
-        let mut zorbist_aspect_evaluation = evaluation::ZorbistAspectEvaluation::new();
-        for amove in self.get_all_after_moves() {
-            let mut bit_board = self.board.to_move_before(&amove).bit_board();
-            let from_to_index = amove.coordpair.from_to_index();
-            let color = bit_board.get_color(from_to_index.0).unwrap();
-            let aspect_evaluation = bit_board.get_aspect_evaluation_from_to_index(from_to_index);
-            let temp = bit_board.get_zorbist_evaluation(color, aspect_evaluation);
+    pub fn get_zorbist_evaluation(&self) -> evaluation::ZorbistEvaluation {
+        let mut zorbist_evaluation = evaluation::ZorbistEvaluation::new();
+        let all_after_moves = self.get_all_after_moves();
+        // println!("all_after_moves.len: {}", all_after_moves.len());
 
-            zorbist_aspect_evaluation.append(temp);
+        for amove in all_after_moves {
+            let mut bit_board = self.board.to_move_before(&amove).bit_board();
+            zorbist_evaluation.append(bit_board.get_zorbist_evaluation_amove(&amove));
         }
 
-        zorbist_aspect_evaluation
+        zorbist_evaluation
     }
 
     pub fn to_string(&self, record_type: coord::RecordType) -> String {
