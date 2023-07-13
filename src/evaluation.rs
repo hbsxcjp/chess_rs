@@ -89,14 +89,19 @@ impl AspectEvaluation {
 
     pub fn from(from_index: usize) -> Self {
         let aspect_evaluation = Self::new();
-        aspect_evaluation.insert(from_index, IndexEvaluation::new());
+        aspect_evaluation
+            .inner
+            .borrow_mut()
+            .insert(from_index, IndexEvaluation::new());
 
         aspect_evaluation
     }
 
     pub fn insert_evaluation(&self, from_index: usize, to_index: usize, evaluation: Evaluation) {
         if !self.inner.borrow().contains_key(&from_index) {
-            self.insert(from_index, IndexEvaluation::new());
+            self.inner
+                .borrow_mut()
+                .insert(from_index, IndexEvaluation::new());
         }
 
         self.inner
@@ -106,13 +111,11 @@ impl AspectEvaluation {
             .insert(to_index, evaluation);
     }
 
-    pub fn insert(&self, from_index: usize, index_evaluation: IndexEvaluation) {
-        self.inner.borrow_mut().insert(from_index, index_evaluation);
-    }
-
     pub fn append(&self, other_aspect_evaluation: Self) {
         for (from_index, index_evaluation) in other_aspect_evaluation.inner.into_inner() {
-            self.insert(from_index, index_evaluation);
+            for (to_index, evaluation) in index_evaluation.inner {
+                self.insert_evaluation(from_index, to_index, evaluation);
+            }
         }
     }
 

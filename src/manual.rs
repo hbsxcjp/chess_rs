@@ -682,6 +682,8 @@ mod tests {
                     if std::fs::File::open(&file_path).is_err() {
                         let _ = manual.write(&file_path);
                     }
+                    zorbist_aspect_evaluation
+                        .append(manual.manual_move.get_zorbist_aspect_evaluation());
 
                     if let Ok(manual) = Manual::from(&file_path) {
                         assert_eq!(manual_string, manual.to_string(coord::RecordType::Txt));
