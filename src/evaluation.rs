@@ -1,42 +1,39 @@
 #![allow(dead_code)]
 // #![allow(unused_imports)]
 
+use serde_derive::{Deserialize, Serialize};
 use std::cell::RefCell;
 use std::collections::HashMap;
 
-use crate::{bit_constant, coord, piece};
+use crate::{bit_constant, coord};
 
-#[derive(Debug)]
+#[derive(Serialize, Deserialize, Debug)]
 pub struct Evaluation {
-    is_killed: bool,
-
-    eat_kind: piece::Kind,
     count: usize,
 }
 
 // to_index->Evaluation
+#[derive(Serialize, Deserialize, Debug)]
 pub struct IndexEvaluation {
     inner: HashMap<usize, Evaluation>,
 }
 
 // from_index->IndexEvaluation
+#[derive(Serialize, Deserialize, Debug)]
 pub struct AspectEvaluation {
     inner: RefCell<HashMap<usize, IndexEvaluation>>,
 }
 
 // #[derive(Debug)]
+#[derive(Serialize, Deserialize, Debug)]
 pub struct ZorbistEvaluation {
     inner: HashMap<u64, (u64, AspectEvaluation)>,
 }
 
 // 后期根据需要扩展
 impl Evaluation {
-    pub fn new(is_killed: bool, eat_kind: piece::Kind, count: usize) -> Evaluation {
-        Evaluation {
-            is_killed,
-            eat_kind,
-            count,
-        }
+    pub fn new(count: usize) -> Evaluation {
+        Evaluation { count }
     }
 
     pub fn exists_operate(&mut self) {
@@ -44,7 +41,7 @@ impl Evaluation {
     }
 
     pub fn to_string(&self) -> String {
-        format!("{},{:?},{}", self.is_killed, self.eat_kind, self.count)
+        format!("{}", self.count)
     }
 }
 
@@ -193,10 +190,24 @@ impl ZorbistEvaluation {
             .map(|(_, aspect_evaluation)| aspect_evaluation)
     }
 
+    pub fn get_data_values(&self) -> Vec<(u64, u64, usize, usize, usize)> {
+        let mut result = vec![];
+        for (key, lock_aspect_eval) in &self.inner {
+            let (lock, aspect_eval) = lock_aspect_eval;
+            for (from_index, index_eval) in aspect_eval.inner.borrow().iter() {
+                for (to_index, eval) in &index_eval.inner {
+                    result.push((*key, *lock, *from_index, *to_index, eval.count));
+                }
+            }
+        }
+
+        result
+    }
+
     pub fn to_string(&self) -> String {
         let mut result = String::new();
         for (key, (lock, aspect_evaluation)) in self.inner.iter() {
-            result.push_str(&format!("key:  {:016x}\nlock: {:016x}\n", key, lock));
+            result.push_str(&format!("key:  {} lock: {}\n", key, lock));
             result.push_str(&aspect_evaluation.to_string());
         }
 

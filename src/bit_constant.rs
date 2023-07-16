@@ -727,21 +727,17 @@ pub fn get_pawn_move(is_bottom: bool, index: usize) -> BitAtom {
 pub fn get_bitatom_array_string(boards: &[BitAtom], is_rotate: bool) -> String {
     let row_count = if is_rotate { COLCOUNT } else { ROWCOUNT };
     let col_count = if is_rotate { ROWCOUNT } else { COLCOUNT };
-    let mode_value = if is_rotate { 0x3FFu128 } else { 0x1FFu128 };
     let get_board_string = |board| {
-        let get_rowcol_string = |board| {
-            let mut result = String::new();
-            for col in 0..col_count {
-                result.push(if board & MASK[col] == 0 { '-' } else { '1' });
+        let mut result: Vec<String> = Vec::new();
+        let all_line = format!("{board:090b} ").replace('0', "-");
+        for row in 0..row_count {
+            let line = &all_line[row * col_count..(row + 1) * col_count];
+            let mut line_str = String::from(" ");
+            for ch in line.chars() {
+                line_str.insert(0, ch);
             }
 
-            result + " "
-        };
-
-        let mut result: Vec<String> = Vec::new();
-        for row in 0..row_count {
-            let offset = row * col_count;
-            result.push(get_rowcol_string((board >> offset) & mode_value));
+            result.insert(0, line_str);
         }
 
         result

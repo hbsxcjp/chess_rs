@@ -242,7 +242,7 @@ impl BitBoard {
         aspect_evaluation.insert_evaluation(
             from_index,
             to_index,
-            evaluation::Evaluation::new(is_killed, eat_kind, count),
+            evaluation::Evaluation::new(count),
         );
     }
 

@@ -8,6 +8,7 @@ pub mod manual;
 mod manual_move;
 mod piece;
 mod common;
+mod database;
 
 // pub use crate::piece;
 

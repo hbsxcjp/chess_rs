@@ -3,6 +3,8 @@
 use crate::coord::{self, COLCOUNT, ROWCOUNT, SEATCOUNT};
 use encoding::all::GBK;
 use encoding::{DecoderTrap, Encoding};
+// use serde_derive::{Deserialize, Serialize};
+// use serde_json;
 // use regex::Error;
 // use std::fs::File;
 // use std::io::prelude::*;
@@ -14,8 +16,10 @@ use crate::manual_move;
 use std::borrow::Borrow;
 use std::collections::BTreeMap;
 // use std::rc::Rc;
+use num_enum::TryFromPrimitive;
 
-#[derive(Debug)]
+#[derive(Debug, TryFromPrimitive)]
+#[repr(usize)]
 pub enum InfoKey {
     Source,
     Title,
@@ -308,9 +312,8 @@ impl Manual {
 
 #[cfg(test)]
 mod tests {
-    use crate::evaluation;
-
     use super::*;
+    use crate::{database, evaluation};
 
     #[test]
     fn test_manual() {
@@ -663,11 +666,11 @@ mod tests {
             format!("tests/output/{}.{}", file_name, record_type.ext_name())
         }
 
-        let mut zorbist_aspect_evaluation = evaluation::ZorbistEvaluation::new();
+        let mut zorbist_evaluation = evaluation::ZorbistEvaluation::new();
         for (file_name, manual_string) in file_name_manual_strings {
             if let Ok(manual) = Manual::from(&format!("tests/xqf/{file_name}.xqf")) {
                 assert_eq!(manual_string, manual.to_string(coord::RecordType::Txt));
-                zorbist_aspect_evaluation.append(manual.manual_move.get_zorbist_evaluation());
+                zorbist_evaluation.append(manual.manual_move.get_zorbist_evaluation());
 
                 // 输出内容以备查看
                 for record_type in [
@@ -691,10 +694,23 @@ mod tests {
             }
         }
 
-        std::fs::write(
-            format!("tests/output/zobrist_evaluation.txt"),
-            zorbist_aspect_evaluation.to_string(),
-        )
-        .expect("Write Err.");
+        let result = zorbist_evaluation.to_string();
+        std::fs::write(format!("tests/output/zobrist_evaluation.txt"), result).expect("Write Err.");
+
+        let json_file_name = "tests/output/serde_json.txt";
+        let result = serde_json::to_string(&zorbist_evaluation).unwrap();
+        std::fs::write(json_file_name, result).expect("Write Err.");
+
+        // serde_json
+        let vec_u8 = std::fs::read(json_file_name).unwrap();
+        let zorbist_eval: evaluation::ZorbistEvaluation =
+            serde_json::from_str(&String::from_utf8(vec_u8).unwrap()).unwrap();
+        let result = zorbist_eval.to_string();
+        std::fs::write(format!("tests/output/zobrist_eval.txt"), result).expect("Write Err.");
+
+        // database
+        let mut conn = database::get_connection();
+        let _ = database::init_zorbist_evaluation(&mut conn, &zorbist_evaluation)
+            .map_err(|err| assert!(false, "insert_zorbist_evaluation: {:?}!\n", err));
     }
 }

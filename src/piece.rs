@@ -2,6 +2,7 @@
 
 // use crate::bit_constant;
 use num_enum::TryFromPrimitive;
+use serde_derive::{Deserialize, Serialize};
 
 #[derive(Clone, Copy, Debug, TryFromPrimitive, PartialEq)]
 #[repr(usize)]
@@ -10,7 +11,7 @@ pub enum Color {
     Black,
 }
 
-#[derive(Clone, Copy, Debug, TryFromPrimitive, PartialEq)]
+#[derive(Clone, Copy, Deserialize, Serialize, Debug, TryFromPrimitive, PartialEq)]
 #[repr(usize)]
 pub enum Kind {
     King,
