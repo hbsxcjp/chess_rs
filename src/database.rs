@@ -20,9 +20,7 @@ pub fn init_database(conn: &Connection) -> Result<()> {
     };
 
     let manual_fields = (0..=(manual::InfoKey::MoveString as usize))
-        .map(|key| {
-            format!("{:?}", manual::InfoKey::try_from(key).unwrap()).to_ascii_lowercase() + " TEXT"
-        })
+        .map(|index| format!("{:?} TEXT", manual::InfoKey::try_from(index).unwrap()))
         .collect::<Vec<String>>()
         .join(", ");
     let zorbist_fields =
@@ -31,6 +29,41 @@ pub fn init_database(conn: &Connection) -> Result<()> {
     conn.execute(&create_table(MANUAL_TABLE, &manual_fields), [])?;
     conn.execute(&create_table(ZORBIST_TABLE, zorbist_fields), [])?;
     Ok(())
+}
+
+fn insert_manual_infos(conn: &mut Connection, infos: Vec<manual::ManualInfo>) -> Result<()> {
+    let transcation = conn.transaction()?;
+    for info in infos {
+        let keys = info.keys().cloned().collect::<Vec<String>>().join(", ");
+        let values = info
+            .values()
+            .map(|value| format!("'{value}'"))
+            .collect::<Vec<String>>()
+            .join(", ");
+
+        transcation.execute(
+            "INSERT INTO manual (:keys) VALUES (:values)",
+            &[(":keys", &keys), (":values", &values)],
+        )?;
+    }
+
+    transcation.commit()
+}
+
+pub fn insert_manuals(
+    conn: &mut Connection,
+    filename_manuals: Vec<(&str, manual::Manual)>,
+) -> Result<()> {
+    let mut infos = Vec::<manual::ManualInfo>::new();
+    for (filename, mut manual) in filename_manuals {
+        manual.info.insert(
+            format!("{:?}", manual::InfoKey::Source),
+            filename.to_string(),
+        );
+        infos.push(manual.info);
+    }
+
+    insert_manual_infos(conn, infos)
 }
 
 pub fn init_zorbist_evaluation(

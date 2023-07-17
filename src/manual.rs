@@ -18,6 +18,8 @@ use std::collections::BTreeMap;
 // use std::rc::Rc;
 use num_enum::TryFromPrimitive;
 
+pub type ManualInfo = BTreeMap<String, String>;
+
 #[derive(Debug, TryFromPrimitive)]
 #[repr(usize)]
 pub enum InfoKey {
@@ -43,14 +45,14 @@ pub enum InfoKey {
 
 #[derive(Debug)]
 pub struct Manual {
-    info: BTreeMap<String, String>,
+    pub info: ManualInfo,
     manual_move: manual_move::ManualMove,
 }
 
 impl Manual {
     pub fn new() -> Self {
         Manual {
-            info: BTreeMap::new(),
+            info: ManualInfo::new(),
             manual_move: manual_move::ManualMove::new(),
         }
     }
@@ -63,6 +65,14 @@ impl Manual {
             _ => Self::from_string(file_name, record_type),
         }
     }
+
+    // pub fn set_info(&mut self, key: String, value: String) {
+    //     if let Some(ref_value) = self.info.get_mut(&key) {
+    //         *ref_value = value;
+    //     } else {
+    //         self.info.insert(key, value);
+    //     }
+    // }
 
     pub fn write(&self, file_name: &str) -> Result<(), std::io::ErrorKind> {
         let record_type =
@@ -78,7 +88,7 @@ impl Manual {
     }
 
     fn from_xqf(file_name: &str) -> common::Result<Self> {
-        let mut info = BTreeMap::new();
+        let mut info = ManualInfo::new();
         let mut manual_move = manual_move::ManualMove::new();
         if let Ok(input) = std::fs::read(file_name) {
             //文件标记'XQ'=$5158/版本/加密掩码/ProductId[4], 产品(厂商的产品号)
@@ -238,7 +248,7 @@ impl Manual {
     }
 
     pub fn from_bin(file_name: &str) -> common::Result<Self> {
-        let mut info = BTreeMap::new();
+        let mut info = ManualInfo::new();
         let mut manual_move = manual_move::ManualMove::new();
         if let Ok(input) = std::fs::read(file_name) {
             let mut input = input.borrow();
@@ -281,7 +291,7 @@ impl Manual {
             .split_once("\n\n")
             .ok_or(common::ParseError::StringParse)?;
 
-        let mut info = BTreeMap::new();
+        let mut info = ManualInfo::new();
         let info_re = regex::Regex::new(r"\[(\S+): ([\s\S]*)\]").unwrap();
         for caps in info_re.captures_iter(info_str) {
             let key = caps.at(1).unwrap().to_string();
@@ -666,6 +676,7 @@ mod tests {
             format!("tests/output/{}.{}", file_name, record_type.ext_name())
         }
 
+        let mut filename_manuals = Vec::<(&str, Manual)>::new();
         let mut zorbist_evaluation = evaluation::ZorbistEvaluation::new();
         for (file_name, manual_string) in file_name_manual_strings {
             if let Ok(manual) = Manual::from(&format!("tests/xqf/{file_name}.xqf")) {
@@ -691,6 +702,7 @@ mod tests {
                         assert_eq!(manual_string, manual.to_string(coord::RecordType::Txt));
                     }
                 }
+                filename_manuals.push((file_name, manual));
             }
         }
 
@@ -710,6 +722,8 @@ mod tests {
 
         // database
         let mut conn = database::get_connection();
+        let _ = database::insert_manuals(&mut conn, filename_manuals)
+            .map_err(|err| assert!(false, "insert_manuals: {:?}!\n", err));
         let _ = database::init_zorbist_evaluation(&mut conn, &zorbist_evaluation)
             .map_err(|err| assert!(false, "insert_zorbist_evaluation: {:?}!\n", err));
     }

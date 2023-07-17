@@ -52,6 +52,15 @@ impl IndexEvaluation {
         }
     }
 
+    pub fn from(to_index_counts: Vec<(usize, usize)>) -> Self {
+        let mut result = Self::new();
+        for (to_index, count) in to_index_counts {
+            result.inner.insert(to_index, Evaluation::new(count));
+        }
+
+        result
+    }
+
     pub fn insert(&mut self, to_index: usize, evaluation: Evaluation) {
         if !self.inner.contains_key(&to_index) {
             self.inner.insert(to_index, evaluation);
