@@ -282,6 +282,17 @@ impl ManualMove {
         zorbist_evaluation
     }
 
+    pub fn to_rowcols(&self) -> String {
+        let mut reslut = String::new();
+        let mut amove = self.root_move.clone();
+        while amove.after_len() > 0 {
+            amove = amove.after().first().unwrap().clone();
+            reslut.push_str(&amove.coordpair.to_string(coord::RecordType::PgnRc));
+        }
+
+        reslut
+    }
+
     pub fn to_string(&self, record_type: coord::RecordType) -> String {
         let mut reslut = self.root_move.to_string(record_type, &self.board);
         for amove in self.get_all_after_moves() {

@@ -1,11 +1,21 @@
 #![allow(dead_code)]
 
-use crate::{evaluation, manual};
+use crate::{coord, evaluation, manual};
 use rusqlite::{params, Connection, Result};
 
 const MANUAL_TABLE: &str = "manual";
 const ZORBIST_TABLE: &str = "zorbist";
 const BASE_FILE: &str = "tests/output/data.db";
+
+fn manual_fields() -> Vec<String> {
+    (0..=(manual::InfoKey::MoveString as usize))
+        .map(|index| manual::InfoKey::try_from(index).unwrap().to_string())
+        .collect::<Vec<String>>()
+}
+
+fn zorbist_fields() -> Vec<&'static str> {
+    ["key", "lock", "from_index", "to_index", "count"].to_vec()
+}
 
 pub fn get_connection() -> Connection {
     Connection::open(BASE_FILE).unwrap()
@@ -14,20 +24,23 @@ pub fn get_connection() -> Connection {
 pub fn init_database(conn: &Connection) -> Result<()> {
     let create_table = |table: &str, fields: &str| -> String {
         format!(
-            "CREATE TABLE IF NOT EXISTS {} (id INTEGER PRIMARY KEY AUTOINCREMENT, {})",
-            table, fields
+            "CREATE TABLE IF NOT EXISTS {table} (id INTEGER PRIMARY KEY AUTOINCREMENT, {fields})"
         )
     };
 
-    let manual_fields = (0..=(manual::InfoKey::MoveString as usize))
-        .map(|index| format!("{:?} TEXT", manual::InfoKey::try_from(index).unwrap()))
+    let manual_fields = manual_fields()
+        .iter()
+        .map(|field| field.to_owned() + " TEXT")
         .collect::<Vec<String>>()
         .join(", ");
-    let zorbist_fields =
-        "key INTEGER, lock INTEGER, from_index INTEGER, to_index INTEGER, count INTEGER";
+    let zorbist_fields = zorbist_fields()
+        .iter()
+        .map(|&field| field.to_owned() + " INTEGER")
+        .collect::<Vec<String>>()
+        .join(", ");
 
     conn.execute(&create_table(MANUAL_TABLE, &manual_fields), [])?;
-    conn.execute(&create_table(ZORBIST_TABLE, zorbist_fields), [])?;
+    conn.execute(&create_table(ZORBIST_TABLE, &zorbist_fields), [])?;
     Ok(())
 }
 
@@ -40,11 +53,9 @@ fn insert_manual_infos(conn: &mut Connection, infos: Vec<manual::ManualInfo>) ->
             .map(|value| format!("'{value}'"))
             .collect::<Vec<String>>()
             .join(", ");
+        let sql = format!("INSERT INTO manual ({keys}) VALUES ({values})");
 
-        transcation.execute(
-            "INSERT INTO manual (:keys) VALUES (:values)",
-            &[(":keys", &keys), (":values", &values)],
-        )?;
+        transcation.execute(&sql, [])?;
     }
 
     transcation.commit()
@@ -52,15 +63,18 @@ fn insert_manual_infos(conn: &mut Connection, infos: Vec<manual::ManualInfo>) ->
 
 pub fn insert_manuals(
     conn: &mut Connection,
-    filename_manuals: Vec<(&str, manual::Manual)>,
+    filename_manuals: Vec<(&str, &str, manual::Manual)>,
 ) -> Result<()> {
     let mut infos = Vec::<manual::ManualInfo>::new();
-    for (filename, mut manual) in filename_manuals {
-        manual.info.insert(
-            format!("{:?}", manual::InfoKey::Source),
-            filename.to_string(),
+    for (filename, _, manual) in filename_manuals {
+        let mut info = manual.info.clone();
+        info.insert(manual::InfoKey::Source.to_string(), filename.to_string());
+        info.insert(manual::InfoKey::RowCols.to_string(), manual.to_rowcols());
+        info.insert(
+            manual::InfoKey::MoveString.to_string(),
+            manual.to_string(coord::RecordType::Txt),
         );
-        infos.push(manual.info);
+        infos.push(info);
     }
 
     insert_manual_infos(conn, infos)
@@ -90,10 +104,18 @@ pub fn init_zorbist_evaluation(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::common;
 
     #[test]
     fn test_database() {
-        let conn = get_connection();
+        let filename_manuals = common::get_filename_manuals();
+        let zorbist_evaluation = common::get_some_zorbist_evaluation(&filename_manuals);
+
+        let mut conn = get_connection();
         let _ = init_database(&conn).map_err(|err| assert!(false, "init_database: {:?}!\n", err));
+        let _ = insert_manuals(&mut conn, filename_manuals)
+            .map_err(|err| assert!(false, "insert_manuals: {:?}!\n", err));
+        let _ = init_zorbist_evaluation(&mut conn, &zorbist_evaluation)
+            .map_err(|err| assert!(false, "insert_zorbist_evaluation: {:?}!\n", err));
     }
 }

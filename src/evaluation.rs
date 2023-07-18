@@ -228,3 +228,29 @@ impl ZorbistEvaluation {
         result
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::common;
+
+    #[test]
+    fn test_evaluation() {
+        let filename_manuals = crate::common::get_filename_manuals();
+        let zorbist_evaluation = common::get_some_zorbist_evaluation(&filename_manuals);
+
+        let result = zorbist_evaluation.to_string();
+        std::fs::write(format!("tests/output/zobrist_evaluation.txt"), result).expect("Write Err.");
+
+        let json_file_name = "tests/output/serde_json.txt";
+        let result = serde_json::to_string(&zorbist_evaluation).unwrap();
+        std::fs::write(json_file_name, result).expect("Write Err.");
+
+        // serde_json
+        let vec_u8 = std::fs::read(json_file_name).unwrap();
+        let zorbist_eval: ZorbistEvaluation =
+            serde_json::from_str(&String::from_utf8(vec_u8).unwrap()).unwrap();
+        let result = zorbist_eval.to_string();
+        std::fs::write(format!("tests/output/zobrist_eval.txt"), result).expect("Write Err.");
+    }
+}
