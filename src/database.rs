@@ -13,8 +13,11 @@ fn manual_fields() -> Vec<String> {
         .collect::<Vec<String>>()
 }
 
-fn zorbist_fields() -> Vec<&'static str> {
-    ["key", "lock", "from_index", "to_index", "count"].to_vec()
+fn zorbist_fields() -> Vec<String> {
+    ["key", "lock", "from_index", "to_index", "count"]
+        .iter()
+        .map(|&field| field.to_owned())
+        .collect::<Vec<String>>()
 }
 
 pub fn get_connection() -> Connection {
@@ -35,7 +38,7 @@ pub fn init_database(conn: &Connection) -> Result<()> {
         .join(", ");
     let zorbist_fields = zorbist_fields()
         .iter()
-        .map(|&field| field.to_owned() + " INTEGER")
+        .map(|field| field.to_owned() + " INTEGER NOT NULL")
         .collect::<Vec<String>>()
         .join(", ");
 
@@ -53,7 +56,7 @@ fn insert_manual_infos(conn: &mut Connection, infos: Vec<manual::ManualInfo>) ->
             .map(|value| format!("'{value}'"))
             .collect::<Vec<String>>()
             .join(", ");
-        let sql = format!("INSERT INTO manual ({keys}) VALUES ({values})");
+        let sql = format!("INSERT INTO {MANUAL_TABLE} ({keys}) VALUES ({values})");
 
         transcation.execute(&sql, [])?;
     }
@@ -67,7 +70,7 @@ pub fn insert_manuals(
 ) -> Result<()> {
     let mut infos = Vec::<manual::ManualInfo>::new();
     for (filename, _, manual) in filename_manuals {
-        let mut info = manual.info.clone();
+        let mut info = manual.get_info();
         info.insert(manual::InfoKey::Source.to_string(), filename.to_string());
         info.insert(manual::InfoKey::RowCols.to_string(), manual.to_rowcols());
         info.insert(
@@ -85,20 +88,52 @@ pub fn init_zorbist_evaluation(
     zorbist_eval: &evaluation::ZorbistEvaluation,
 ) -> Result<()> {
     let transcation = conn.transaction()?;
-    transcation.execute("DELETE FROM zorbist", [])?;
-    transcation.execute(
-        "UPDATE sqlite_sequence SET seq = 0 WHERE name = 'zorbist'",
-        [],
-    )?;
+    for sql in [
+        format!("DELETE FROM {ZORBIST_TABLE}"),
+        format!("UPDATE sqlite_sequence SET seq = 0 WHERE name = '{ZORBIST_TABLE}'"),
+    ] {
+        transcation.execute(&sql, [])?;
+    }
 
+    let zorbist_fields = zorbist_fields().join(", ");
+    let sql = format!("INSERT INTO {ZORBIST_TABLE} ({zorbist_fields}) VALUES (?1, ?2, ?3, ?4, ?5)");
     for (key, lock, from_index, to_index, count) in zorbist_eval.get_data_values() {
         transcation.execute(
-            "INSERT INTO zorbist (key, lock, from_index, to_index, count) VALUES (?1, ?2, ?3, ?4, ?5)",
-            params![key as i64, lock as i64, from_index as i64, to_index as i64, count as i64],
+            &sql,
+            params![
+                key as i64,
+                lock as i64,
+                from_index as i64,
+                to_index as i64,
+                count as i64
+            ],
         )?;
     }
 
     transcation.commit()
+}
+
+pub fn get_zorbist_evaluation(conn: &mut Connection) -> evaluation::ZorbistEvaluation {
+    let zorbist_fields = zorbist_fields().join(", ");
+    let sql = format!("SELECT {zorbist_fields} FROM {ZORBIST_TABLE}");
+    let mut stmt = conn.prepare(&sql).unwrap();
+    let row_iter = stmt
+        .query_map([], |row| {
+            Ok((
+                row.get::<usize, i64>(0).unwrap() as u64,
+                row.get::<usize, i64>(1).unwrap() as u64,
+                row.get::<usize, i64>(2).unwrap() as usize,
+                row.get::<usize, i64>(3).unwrap() as usize,
+                row.get::<usize, i64>(4).unwrap() as usize,
+            ))
+        })
+        .unwrap();
+
+    let mut data_values = Vec::<(u64, u64, usize, usize, usize)>::new();
+    for row_data in row_iter {
+        data_values.push(row_data.unwrap());
+    }
+    evaluation::ZorbistEvaluation::from_data_values(data_values)
 }
 
 #[cfg(test)]
@@ -117,5 +152,13 @@ mod tests {
             .map_err(|err| assert!(false, "insert_manuals: {:?}!\n", err));
         let _ = init_zorbist_evaluation(&mut conn, &zorbist_evaluation)
             .map_err(|err| assert!(false, "insert_zorbist_evaluation: {:?}!\n", err));
+
+        let zorbist_eval_from_database = get_zorbist_evaluation(&mut conn);
+        let result = zorbist_eval_from_database.to_string();
+        std::fs::write(
+            format!("tests/output/zorbist_eval_from_database.txt"),
+            result,
+        )
+        .expect("Write Err.");
     }
 }

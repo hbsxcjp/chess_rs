@@ -34,6 +34,20 @@ impl ManualMove {
         }
     }
 
+    pub fn from_rowcols(fen: &str, rowcols: &str) -> common::Result<Self> {
+        let root_move = amove::Move::root();
+        let mut amove = root_move.clone();
+        for index in 0..(rowcols.len() / 4) {
+            let coordpair = CoordPair::from_string(
+                &rowcols[index * 4..(index + 1) * 4],
+                coord::RecordType::PgnRc,
+            )?;
+            amove = amove.append(coordpair, String::new());
+        }
+
+        Ok(ManualMove::from(fen, root_move))
+    }
+
     pub fn from_xqf(
         fen: &str,
         input: &Vec<u8>,

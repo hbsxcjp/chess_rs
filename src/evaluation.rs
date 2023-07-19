@@ -102,6 +102,13 @@ impl AspectEvaluation {
         aspect_evaluation
     }
 
+    pub fn from_values(from_index: usize, to_index: usize, count: usize) -> Self {
+        let aspect_evaluation = Self::from(from_index);
+        aspect_evaluation.insert_evaluation(from_index, to_index, Evaluation { count });
+
+        aspect_evaluation
+    }
+
     pub fn insert_evaluation(&self, from_index: usize, to_index: usize, evaluation: Evaluation) {
         if !self.inner.borrow().contains_key(&from_index) {
             self.inner
@@ -157,6 +164,19 @@ impl ZorbistEvaluation {
     pub fn from(key: u64, lock: u64, aspect_evaluation: AspectEvaluation) -> Self {
         let mut zorbist_evaluation = Self::new();
         zorbist_evaluation.insert(key, lock, aspect_evaluation);
+
+        zorbist_evaluation
+    }
+
+    pub fn from_data_values(data_values: Vec<(u64, u64, usize, usize, usize)>) -> Self {
+        let mut zorbist_evaluation = Self::new();
+        for (key, lock, from_index, to_index, count) in data_values {
+            zorbist_evaluation.insert(
+                key,
+                lock,
+                AspectEvaluation::from_values(from_index, to_index, count),
+            );
+        }
 
         zorbist_evaluation
     }

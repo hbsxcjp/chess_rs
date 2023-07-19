@@ -52,7 +52,7 @@ impl InfoKey {
 
 #[derive(Debug)]
 pub struct Manual {
-    pub info: ManualInfo,
+    info: ManualInfo,
     manual_move: manual_move::ManualMove,
 }
 
@@ -71,6 +71,28 @@ impl Manual {
             coord::RecordType::Bin => Self::from_bin(file_name),
             _ => Self::from_string(file_name, record_type),
         }
+    }
+
+    pub fn from_info(info: ManualInfo) -> common::Result<Self> {
+        let move_str = InfoKey::MoveString.to_string();
+        let fen = info.get(&InfoKey::FEN.to_string()).unwrap();
+        let manual_move = match info.contains_key(&move_str) {
+            true => {
+                let manual_move_str = info.get(&move_str).unwrap();
+                manual_move::ManualMove::from_string(fen, manual_move_str, coord::RecordType::Txt)
+            }
+            false => {
+                let rowcols = InfoKey::RowCols.to_string();
+                let rowcols_str = info.get(&rowcols).unwrap();
+                manual_move::ManualMove::from_rowcols(fen, rowcols_str)
+            }
+        }?;
+
+        Ok(Manual { info, manual_move })
+    }
+
+    pub fn get_info(&self) -> ManualInfo {
+        self.info.clone()
     }
 
     // pub fn set_info(&mut self, key: String, value: String) {
