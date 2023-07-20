@@ -47,9 +47,20 @@ pub fn init_database(conn: &Connection) -> Result<()> {
     Ok(())
 }
 
-fn insert_manual_infos(conn: &mut Connection, infos: Vec<manual::ManualInfo>) -> Result<()> {
+pub fn insert_manuals(
+    conn: &mut Connection,
+    filename_manuals: &Vec<(&str, &str, manual::Manual)>,
+) -> Result<()> {
     let transcation = conn.transaction()?;
-    for info in infos {
+    for (filename, _, manual) in filename_manuals {
+        let mut info = manual.get_info();
+        info.insert(manual::InfoKey::Source.to_string(), filename.to_string());
+        info.insert(manual::InfoKey::RowCols.to_string(), manual.to_rowcols());
+        info.insert(
+            manual::InfoKey::MoveString.to_string(),
+            manual.to_string(coord::RecordType::Txt),
+        );
+
         let keys = info.keys().cloned().collect::<Vec<String>>().join(", ");
         let values = info
             .values()
@@ -64,23 +75,33 @@ fn insert_manual_infos(conn: &mut Connection, infos: Vec<manual::ManualInfo>) ->
     transcation.commit()
 }
 
-pub fn insert_manuals(
-    conn: &mut Connection,
-    filename_manuals: Vec<(&str, &str, manual::Manual)>,
-) -> Result<()> {
-    let mut infos = Vec::<manual::ManualInfo>::new();
-    for (filename, _, manual) in filename_manuals {
-        let mut info = manual.get_info();
-        info.insert(manual::InfoKey::Source.to_string(), filename.to_string());
-        info.insert(manual::InfoKey::RowCols.to_string(), manual.to_rowcols());
-        info.insert(
-            manual::InfoKey::MoveString.to_string(),
-            manual.to_string(coord::RecordType::Txt),
-        );
-        infos.push(info);
+pub fn get_manuals(conn: &mut Connection, cond: &str) -> Vec<manual::Manual> {
+    let manual_fields_vec = manual_fields();
+    let manual_fields = manual_fields_vec.join(", ");
+    let sql = format!("SELECT {manual_fields} FROM {MANUAL_TABLE} WHERE {cond}");
+    let mut stmt = conn.prepare(&sql).unwrap();
+    let row_iter = stmt
+        .query_map([], |row| {
+            let mut info = manual::ManualInfo::new();
+            for (index, field) in manual_fields_vec.iter().enumerate() {
+                if let Ok(value) = row.get::<usize, String>(index) {
+                    info.insert(field.to_string(), value);
+                }
+            }
+
+            // println!("{:?}", info);
+            Ok(info)
+        })
+        .unwrap();
+
+    let mut manuals = Vec::<manual::Manual>::new();
+    for row_data in row_iter {
+        if let Ok(manual) = manual::Manual::from_info(row_data.unwrap()) {
+            manuals.push(manual);
+        }
     }
 
-    insert_manual_infos(conn, infos)
+    manuals
 }
 
 pub fn init_zorbist_evaluation(
@@ -146,13 +167,15 @@ mod tests {
         let filename_manuals = common::get_filename_manuals();
         let zorbist_evaluation = common::get_some_zorbist_evaluation(&filename_manuals);
 
+        // 初始化数据表、存储棋局、存储历史棋谱
         let mut conn = get_connection();
         let _ = init_database(&conn).map_err(|err| assert!(false, "init_database: {:?}!\n", err));
-        let _ = insert_manuals(&mut conn, filename_manuals)
+        let _ = insert_manuals(&mut conn, &filename_manuals)
             .map_err(|err| assert!(false, "insert_manuals: {:?}!\n", err));
         let _ = init_zorbist_evaluation(&mut conn, &zorbist_evaluation)
             .map_err(|err| assert!(false, "insert_zorbist_evaluation: {:?}!\n", err));
 
+        // 读取历史棋谱
         let zorbist_eval_from_database = get_zorbist_evaluation(&mut conn);
         let result = zorbist_eval_from_database.to_string();
         std::fs::write(
@@ -160,5 +183,12 @@ mod tests {
             result,
         )
         .expect("Write Err.");
+
+        // 读取棋局
+        // let manuals = get_manuals(&mut conn, "id < 2");
+        // for (index, manual) in manuals.iter().enumerate() {
+        //     let manual_string = filename_manuals[index].1;
+        //     assert_eq!(manual_string, manual.to_string(coord::RecordType::Txt));
+        // }
     }
 }

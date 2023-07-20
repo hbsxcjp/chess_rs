@@ -50,6 +50,13 @@ impl InfoKey {
     }
 }
 
+pub fn get_fen(info: &ManualInfo) -> String {
+    match info.get(&InfoKey::FEN.to_string()) {
+        Some(value) => value.split_once(" ").unwrap().0.to_string(),
+        None => String::new(),
+    }
+}
+
 #[derive(Debug)]
 pub struct Manual {
     info: ManualInfo,
@@ -75,7 +82,7 @@ impl Manual {
 
     pub fn from_info(info: ManualInfo) -> common::Result<Self> {
         let move_str = InfoKey::MoveString.to_string();
-        let fen = info.get(&InfoKey::FEN.to_string()).unwrap();
+        let fen = &get_fen(&info);
         let manual_move = match info.contains_key(&move_str) {
             true => {
                 let manual_move_str = info.get(&move_str).unwrap();
@@ -265,7 +272,7 @@ impl Manual {
                 (InfoKey::Writer, bytes_to_string(rmkwriter)),
                 (InfoKey::Author, bytes_to_string(author)),
             ] {
-                info.insert(format!("{:?}", key), value);
+                info.insert(key.to_string(), value);
             }
 
             manual_move = manual_move::ManualMove::from_xqf(
@@ -289,13 +296,9 @@ impl Manual {
                 // println!("key_value: {key} = {value}");
                 info.insert(key, value);
             }
-            let fen = info
-                .get(&format!("{:?}", InfoKey::FEN))
-                .unwrap()
-                .split(' ')
-                .collect::<Vec<&str>>()[0];
 
-            manual_move = manual_move::ManualMove::from_bin(fen, &mut input);
+            let fen = get_fen(&info);
+            manual_move = manual_move::ManualMove::from_bin(&fen, &mut input);
         }
 
         Ok(Manual { info, manual_move })
@@ -330,11 +333,10 @@ impl Manual {
         }
         // println!("{:?}", info);
 
-        let fen = match info.get(&format!("{:?}", InfoKey::FEN)) {
-            Some(value) => value.split_once(" ").unwrap().0,
-            None => board::FEN,
-        };
-        let manual_move = manual_move::ManualMove::from_string(fen, manual_move_str, record_type)?;
+        let fen = get_fen(&info);
+        let ref_fen = if fen.is_empty() { board::FEN } else { &fen };
+        let manual_move =
+            manual_move::ManualMove::from_string(ref_fen, manual_move_str, record_type)?;
 
         Ok(Manual { info, manual_move })
     }
