@@ -207,9 +207,9 @@ impl Board {
         self.pieces[to_index] = amove.get_to_piece();
     }
 
-    pub fn to_move_before(&self, amove: &Rc<amove::Move>) -> Self {
+    pub fn to_move(&self, amove: &Rc<amove::Move>, contains_self: bool) -> Self {
         let mut board = self.clone();
-        for amove in amove.before_moves() {
+        for amove in amove.before_moves(contains_self) {
             board.do_move(&amove);
         }
 
@@ -301,7 +301,10 @@ impl Board {
             let col = Self::get_col(color, zh_chs[1]);
             let from_col = Coord::get_side_col(col, color_is_bottom);
             live_coords = self.get_coords_from_color_kind_col(color, kind, from_col);
-            assert!(live_coords.len() > 0);
+            assert!(
+                live_coords.len() > 0,
+                "board:{self:?}\ncolor:{color:?} kind:{kind:?} from_col:{from_col}"
+            );
 
             // 士、象同列时不分前后，以进、退区分棋子位置
             if live_coords.len() == 2 && move_dir == MoveDir::Forward {
@@ -363,10 +366,8 @@ impl Board {
     fn get_coords_from_color_kind(&self, color: piece::Color, kind: piece::Kind) -> Vec<Coord> {
         let mut result = Vec::new();
         for (index, piece) in self.pieces.iter().enumerate() {
-            if let piece::Piece::Some(acolor, akind) = *piece {
-                if acolor == color && akind == kind {
-                    result.push(Coord::from_index(index).unwrap());
-                }
+            if piece::Piece::Some(color, kind) == *piece {
+                result.push(Coord::from_index(index).unwrap());
             }
         }
 

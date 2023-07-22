@@ -50,17 +50,23 @@ impl InfoKey {
     }
 }
 
-pub fn get_fen(info: &ManualInfo) -> String {
+pub fn get_fen(info: &ManualInfo) -> &str {
     match info.get(&InfoKey::FEN.to_string()) {
-        Some(value) => value.split_once(" ").unwrap().0.to_string(),
-        None => String::new(),
+        Some(value) => value.split_once(" ").unwrap().0,
+        None => board::FEN,
     }
 }
 
 #[derive(Debug)]
 pub struct Manual {
     info: ManualInfo,
-    manual_move: manual_move::ManualMove,
+    pub manual_move: manual_move::ManualMove,
+}
+
+impl PartialEq for Manual {
+    fn eq(&self, other: &Self) -> bool {
+        self.manual_move == other.manual_move
+    }
 }
 
 impl Manual {
@@ -81,17 +87,17 @@ impl Manual {
     }
 
     pub fn from_info(info: ManualInfo) -> common::Result<Self> {
-        let move_str = InfoKey::MoveString.to_string();
-        let fen = &get_fen(&info);
-        let manual_move = match info.contains_key(&move_str) {
+        let fen = get_fen(&info);
+        let manual_move_str = info.get(&InfoKey::MoveString.to_string()).unwrap();
+        let manual_move = match manual_move_str.is_empty() {
             true => {
-                let manual_move_str = info.get(&move_str).unwrap();
-                manual_move::ManualMove::from_string(fen, manual_move_str, coord::RecordType::Txt)
+                let rowcols_str = info.get(&InfoKey::RowCols.to_string()).unwrap();
+                manual_move::ManualMove::from_rowcols(fen, rowcols_str)
             }
             false => {
-                let rowcols = InfoKey::RowCols.to_string();
-                let rowcols_str = info.get(&rowcols).unwrap();
-                manual_move::ManualMove::from_rowcols(fen, rowcols_str)
+                // println!("manual_move_str:{manual_move_str}\n");
+                // println!("fen:{fen}\n");
+                manual_move::ManualMove::from_string(fen, manual_move_str, coord::RecordType::PgnZh)
             }
         }?;
 
@@ -324,19 +330,19 @@ impl Manual {
             .ok_or(common::ParseError::StringParse)?;
 
         let mut info = ManualInfo::new();
-        let info_re = regex::Regex::new(r"\[(\S+): ([\s\S]*)\]").unwrap();
+        let info_re = regex::Regex::new(r"\[(\S+): ([\s\S]*?)\]").unwrap();
         for caps in info_re.captures_iter(info_str) {
             let key = caps.at(1).unwrap().to_string();
             let value = caps.at(2).unwrap().to_string();
 
             info.insert(key, value);
         }
-        // println!("{:?}", info);
 
         let fen = get_fen(&info);
-        let ref_fen = if fen.is_empty() { board::FEN } else { &fen };
-        let manual_move =
-            manual_move::ManualMove::from_string(ref_fen, manual_move_str, record_type)?;
+        // if record_type == coord::RecordType::PgnZh {
+        //     println!("info:{:?}\nfen:{}", info, fen);
+        // }
+        let manual_move = manual_move::ManualMove::from_string(fen, manual_move_str, record_type)?;
 
         Ok(Manual { info, manual_move })
     }
@@ -349,13 +355,17 @@ impl Manual {
         self.manual_move.to_rowcols()
     }
 
+    pub fn get_manualmove_string(&self, record_type: coord::RecordType) -> String {
+        self.manual_move.to_string(record_type)
+    }
+
     pub fn to_string(&self, record_type: coord::RecordType) -> String {
-        let mut remark = String::new();
+        let mut info_str = String::new();
         for (key, value) in &self.info {
-            remark.push_str(&format!("[{key}: {value}]\n"));
+            info_str.push_str(&format!("[{key}: {value}]\n"));
         }
 
-        format!("{}\n{}", remark, self.manual_move.to_string(record_type))
+        format!("{}\n{}", info_str, self.get_manualmove_string(record_type))
     }
 }
 
@@ -389,9 +399,12 @@ mod tests {
                     let _ = manual.write(&file_path);
                 }
 
-                if let Ok(manual) = Manual::from(&file_path) {
-                    assert_eq!(manual_string, manual.to_string(coord::RecordType::Txt));
-                }
+                let manual = Manual::from(&file_path).unwrap();
+                assert_eq!(
+                    manual_string,
+                    manual.to_string(coord::RecordType::Txt),
+                    "file_path: {file_path}"
+                );
             }
         }
     }

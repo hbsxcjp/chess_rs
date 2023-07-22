@@ -52,13 +52,20 @@ pub fn insert_manuals(
     filename_manuals: &Vec<(&str, &str, manual::Manual)>,
 ) -> Result<()> {
     let transcation = conn.transaction()?;
+    for sql in [
+        format!("DELETE FROM {MANUAL_TABLE}"),
+        format!("UPDATE sqlite_sequence SET seq = 0 WHERE name = '{MANUAL_TABLE}'"),
+    ] {
+        transcation.execute(&sql, [])?;
+    }
+
     for (filename, _, manual) in filename_manuals {
         let mut info = manual.get_info();
         info.insert(manual::InfoKey::Source.to_string(), filename.to_string());
         info.insert(manual::InfoKey::RowCols.to_string(), manual.to_rowcols());
         info.insert(
             manual::InfoKey::MoveString.to_string(),
-            manual.to_string(coord::RecordType::Txt),
+            manual.get_manualmove_string(coord::RecordType::PgnZh),
         );
 
         let keys = info.keys().cloned().collect::<Vec<String>>().join(", ");
@@ -76,14 +83,14 @@ pub fn insert_manuals(
 }
 
 pub fn get_manuals(conn: &mut Connection, cond: &str) -> Vec<manual::Manual> {
-    let manual_fields_vec = manual_fields();
-    let manual_fields = manual_fields_vec.join(", ");
-    let sql = format!("SELECT {manual_fields} FROM {MANUAL_TABLE} WHERE {cond}");
+    let manual_fields = manual_fields();
+    let manual_fields_str = manual_fields.join(", ");
+    let sql = format!("SELECT {manual_fields_str} FROM {MANUAL_TABLE} WHERE {cond}");
     let mut stmt = conn.prepare(&sql).unwrap();
-    let row_iter = stmt
+    let info_iter = stmt
         .query_map([], |row| {
             let mut info = manual::ManualInfo::new();
-            for (index, field) in manual_fields_vec.iter().enumerate() {
+            for (index, field) in manual_fields.iter().enumerate() {
                 if let Ok(value) = row.get::<usize, String>(index) {
                     info.insert(field.to_string(), value);
                 }
@@ -95,8 +102,8 @@ pub fn get_manuals(conn: &mut Connection, cond: &str) -> Vec<manual::Manual> {
         .unwrap();
 
     let mut manuals = Vec::<manual::Manual>::new();
-    for row_data in row_iter {
-        if let Ok(manual) = manual::Manual::from_info(row_data.unwrap()) {
+    for info_opt in info_iter {
+        if let Ok(manual) = manual::Manual::from_info(info_opt.unwrap()) {
             manuals.push(manual);
         }
     }
@@ -185,10 +192,9 @@ mod tests {
         .expect("Write Err.");
 
         // 读取棋局
-        // let manuals = get_manuals(&mut conn, "id < 2");
-        // for (index, manual) in manuals.iter().enumerate() {
-        //     let manual_string = filename_manuals[index].1;
-        //     assert_eq!(manual_string, manual.to_string(coord::RecordType::Txt));
-        // }
+        let manuals = get_manuals(&mut conn, "id < 6");
+        for (index, manual) in manuals.iter().enumerate() {
+            assert!(filename_manuals[index].2 == *manual);
+        }
     }
 }
