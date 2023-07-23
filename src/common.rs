@@ -86,11 +86,9 @@ pub fn get_filename_manuals() -> Vec<(&'static str, &'static str, manual::Manual
     filename_manuals
 }
 
-pub fn get_some_zorbist_evaluation(
-    filename_manuals: &Vec<(&str, &str, manual::Manual)>,
-) -> evaluation::ZorbistEvaluation {
+pub fn get_zorbist_evaluation(manuals: Vec<&manual::Manual>) -> evaluation::ZorbistEvaluation {
     let mut zorbist_evaluation = evaluation::ZorbistEvaluation::new();
-    for (_, _, manual) in filename_manuals {
+    for manual in manuals {
         zorbist_evaluation.append(manual.get_zorbist_evaluation());
     }
 

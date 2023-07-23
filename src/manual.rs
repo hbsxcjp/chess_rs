@@ -51,10 +51,13 @@ impl InfoKey {
 }
 
 pub fn get_fen(info: &ManualInfo) -> &str {
-    match info.get(&InfoKey::FEN.to_string()) {
-        Some(value) => value.split_once(" ").unwrap().0,
-        None => board::FEN,
+    if let Some(value) = info.get(&InfoKey::FEN.to_string()) {
+        if !value.is_empty() {
+            return value.split_once(" ").unwrap().0;
+        }
     }
+
+    board::FEN
 }
 
 #[derive(Debug)]
