@@ -22,6 +22,13 @@ pub struct ManualMove {
     root_move: Rc<amove::Move>,
 }
 
+impl PartialEq for ManualMove {
+    fn eq(&self, other: &Self) -> bool {
+        self.board == other.board
+            && self.to_string(coord::RecordType::Txt) == other.to_string(coord::RecordType::Txt)
+    }
+}
+
 impl ManualMove {
     pub fn new() -> Self {
         ManualMove::from(board::FEN, amove::Move::root())
@@ -222,6 +229,7 @@ impl ManualMove {
         let amove_re = regex::Regex::new(&amove_pattern).unwrap();
         // println!("{}\n{}", manual_move_str, remark_num_pattern);
 
+        let board = board::Board::from(fen);
         let root_move = amove::Move::root();
         if let Some(root_caps) = root_move_re.captures(manual_move_str) {
             if let Some(remark) = root_caps.at(1) {
@@ -237,10 +245,18 @@ impl ManualMove {
                     while move_after_num_deque.len() > 0 {
                         let (before_move, before_after_num) =
                             move_after_num_deque.pop_front().unwrap();
+                        let the_board = board.to_move(&before_move, true);
                         for _ in 0..before_after_num {
                             let caps = caps_iter.next().ok_or(common::ParseError::StringParse)?;
-                            let coordpair =
-                                CoordPair::from_string(caps.at(1).unwrap(), record_type)?;
+                            let coordpair_str = caps.at(1).unwrap();
+                            let coordpair = match record_type {
+                                coord::RecordType::PgnZh => {
+                                    // println!("{:?}\nfen:{}", the_board, fen);
+                                    // println!("{} ", coordpair_str);
+                                    the_board.get_coordpair_from_zhstr(coordpair_str)
+                                }
+                                _ => CoordPair::from_string(coordpair_str, record_type)?,
+                            };
                             let remark = if let Some(remark) = caps.at(2) {
                                 remark.to_string()
                             } else {
@@ -262,7 +278,7 @@ impl ManualMove {
             }
         }
 
-        Ok(ManualMove::from(fen, root_move))
+        Ok(ManualMove { board, root_move })
     }
 
     fn get_all_after_moves(&self) -> Vec<Rc<amove::Move>> {
@@ -289,7 +305,7 @@ impl ManualMove {
         // println!("all_after_moves.len: {}", all_after_moves.len());
 
         for amove in all_after_moves {
-            let mut bit_board = self.board.to_move_before(&amove).bit_board();
+            let mut bit_board = self.board.to_move(&amove, false).bit_board();
             zorbist_evaluation.append(bit_board.get_zorbist_evaluation_amove(&amove));
         }
 

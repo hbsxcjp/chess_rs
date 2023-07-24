@@ -36,8 +36,8 @@ impl Evaluation {
         Evaluation { count }
     }
 
-    pub fn exists_operate(&mut self) {
-        self.count += 1;
+    pub fn insert(&mut self, evaluation: Evaluation) {
+        self.count += evaluation.count;
     }
 
     pub fn to_string(&self) -> String {
@@ -65,7 +65,7 @@ impl IndexEvaluation {
         if !self.inner.contains_key(&to_index) {
             self.inner.insert(to_index, evaluation);
         } else {
-            self.inner.get_mut(&to_index).unwrap().exists_operate();
+            self.inner.get_mut(&to_index).unwrap().insert(evaluation);
         }
     }
 
@@ -248,12 +248,16 @@ impl ZorbistEvaluation {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::common;
+    use crate::{common, manual};
 
     #[test]
     fn test_evaluation() {
         let filename_manuals = crate::common::get_filename_manuals();
-        let zorbist_evaluation = common::get_some_zorbist_evaluation(&filename_manuals);
+        let manuals = filename_manuals
+            .iter()
+            .map(|(_, _, manual)| manual)
+            .collect::<Vec<&manual::Manual>>();
+        let zorbist_evaluation = common::get_zorbist_evaluation(manuals);
 
         let result = zorbist_evaluation.to_string();
         std::fs::write(format!("tests/output/zobrist_evaluation.txt"), result).expect("Write Err.");

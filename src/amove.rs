@@ -101,9 +101,13 @@ impl Move {
         *self.to_piece.borrow_mut() = piece;
     }
 
-    pub fn before_moves(self: &Rc<Self>) -> Vec<Rc<Self>> {
+    pub fn before_moves(self: &Rc<Self>, contains_self: bool) -> Vec<Rc<Self>> {
         let mut before_moves = Vec::new();
-        let mut amove = self.before().unwrap();
+        let mut amove = if contains_self {
+            self.clone()
+        } else {
+            self.before().unwrap()
+        };
         while !amove.is_root() {
             before_moves.insert(0, amove.clone());
             amove = amove.before().unwrap();
@@ -126,7 +130,7 @@ impl Move {
                     String::new()
                 } else {
                     board
-                        .to_move_before(self)
+                        .to_move(self, false)
                         .get_zhstr_from_coordpair(&self.coordpair)
                 }
             } else {
