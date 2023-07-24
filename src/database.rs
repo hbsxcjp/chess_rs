@@ -129,11 +129,14 @@ pub fn get_zorbist_evaluation(conn: &mut Connection) -> evaluation::ZorbistEvalu
         })
         .unwrap();
 
-    let mut data_values = Vec::<(u64, u64, usize, usize, usize)>::new();
-    for row_data in row_iter {
-        data_values.push(row_data.unwrap());
+    let mut zorbist_evaluation = evaluation::ZorbistEvaluation::new();
+    for row in row_iter {
+        if let Ok(values) = row {
+            zorbist_evaluation.insert_values(values);
+        }
     }
-    evaluation::ZorbistEvaluation::from_data_values(data_values)
+
+    zorbist_evaluation
 }
 
 #[cfg(test)]

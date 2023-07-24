@@ -163,25 +163,21 @@ impl ZorbistEvaluation {
 
     pub fn from(key: u64, lock: u64, aspect_evaluation: AspectEvaluation) -> Self {
         let mut zorbist_evaluation = Self::new();
-        zorbist_evaluation.insert(key, lock, aspect_evaluation);
+        zorbist_evaluation.insert_kla(key, lock, aspect_evaluation);
 
         zorbist_evaluation
     }
 
-    pub fn from_data_values(data_values: Vec<(u64, u64, usize, usize, usize)>) -> Self {
-        let mut zorbist_evaluation = Self::new();
-        for (key, lock, from_index, to_index, count) in data_values {
-            zorbist_evaluation.insert(
-                key,
-                lock,
-                AspectEvaluation::from_values(from_index, to_index, count),
-            );
-        }
-
-        zorbist_evaluation
+    pub fn insert_values(&mut self, values: (u64, u64, usize, usize, usize)) {
+        let (key, lock, from_index, to_index, count) = values;
+        self.insert_kla(
+            key,
+            lock,
+            AspectEvaluation::from_values(from_index, to_index, count),
+        );
     }
 
-    pub fn insert(&mut self, key: u64, lock: u64, aspect_evaluation: AspectEvaluation) {
+    pub fn insert_kla(&mut self, key: u64, lock: u64, aspect_evaluation: AspectEvaluation) {
         match self.get_aspect_evaluation(key, lock) {
             Some(old_aspect_evaluation) => old_aspect_evaluation.append(aspect_evaluation),
             None => {
@@ -192,7 +188,7 @@ impl ZorbistEvaluation {
 
     pub fn append(&mut self, other_zorbist_evaluation: Self) {
         for (key, (lock, aspect_evaluation)) in other_zorbist_evaluation.inner {
-            self.insert(key, lock, aspect_evaluation);
+            self.insert_kla(key, lock, aspect_evaluation);
         }
     }
 
