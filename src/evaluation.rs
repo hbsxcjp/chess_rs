@@ -2,7 +2,7 @@
 // #![allow(unused_imports)]
 
 use serde_derive::{Deserialize, Serialize};
-use std::cell::RefCell;
+// use std::cell::RefCell;
 use std::collections::HashMap;
 
 use crate::{bit_constant, coord};
@@ -21,7 +21,7 @@ pub struct IndexEvaluation {
 // from_index->IndexEvaluation
 #[derive(Serialize, Deserialize, Debug)]
 pub struct AspectEvaluation {
-    inner: RefCell<HashMap<usize, IndexEvaluation>>,
+    inner: HashMap<usize, IndexEvaluation>,
 }
 
 // #[derive(Debug)]
@@ -36,7 +36,7 @@ impl Evaluation {
         Evaluation { count }
     }
 
-    pub fn insert(&mut self, evaluation: Evaluation) {
+    pub fn append(&mut self, evaluation: Evaluation) {
         self.count += evaluation.count;
     }
 
@@ -52,20 +52,38 @@ impl IndexEvaluation {
         }
     }
 
-    pub fn from(to_index_counts: Vec<(usize, usize)>) -> Self {
-        let mut result = Self::new();
-        for (to_index, count) in to_index_counts {
-            result.inner.insert(to_index, Evaluation::new(count));
-        }
+    pub fn from_values(to_index: usize, count: usize) -> Self {
+        let mut index_evaluation = Self::new();
+        index_evaluation
+            .inner
+            .insert(to_index, Evaluation { count });
 
-        result
+        index_evaluation
     }
+
+    // pub fn from(to_index_counts: Vec<(usize, usize)>) -> Self {
+    //     let mut result = Self::new();
+    //     for (to_index, count) in to_index_counts {
+    //         result
+    //             .inner
+    //             .borrow_mut()
+    //             .insert(to_index, Evaluation::new(count));
+    //     }
+
+    //     result
+    // }
 
     pub fn insert(&mut self, to_index: usize, evaluation: Evaluation) {
         if !self.inner.contains_key(&to_index) {
             self.inner.insert(to_index, evaluation);
         } else {
-            self.inner.get_mut(&to_index).unwrap().insert(evaluation);
+            self.inner.get_mut(&to_index).unwrap().append(evaluation);
+        }
+    }
+
+    pub fn append(&mut self, other_index_evaluation: Self) {
+        for (to_index, evaluation) in other_index_evaluation.inner {
+            self.insert(to_index, evaluation);
         }
     }
 
@@ -88,56 +106,57 @@ impl IndexEvaluation {
 impl AspectEvaluation {
     pub fn new() -> Self {
         Self {
-            inner: RefCell::new(HashMap::new()),
+            inner: HashMap::new(),
         }
     }
 
     pub fn from(from_index: usize) -> Self {
-        let aspect_evaluation = Self::new();
+        let mut aspect_evaluation = Self::new();
         aspect_evaluation
             .inner
-            .borrow_mut()
             .insert(from_index, IndexEvaluation::new());
 
         aspect_evaluation
     }
 
     pub fn from_values(from_index: usize, to_index: usize, count: usize) -> Self {
-        let aspect_evaluation = Self::from(from_index);
-        aspect_evaluation.insert_evaluation(from_index, to_index, Evaluation { count });
+        let mut aspect_evaluation = Self::from(from_index);
+        aspect_evaluation.insert(from_index, IndexEvaluation::from_values(to_index, count));
 
         aspect_evaluation
     }
 
-    pub fn insert_evaluation(&self, from_index: usize, to_index: usize, evaluation: Evaluation) {
-        if !self.inner.borrow().contains_key(&from_index) {
-            self.inner
-                .borrow_mut()
-                .insert(from_index, IndexEvaluation::new());
-        }
+    // pub fn insert_evaluation(&self, from_index: usize, to_index: usize, evaluation: Evaluation) {
+    //     if !self.inner.contains_key(&from_index) {
+    //         self.inner.insert(from_index, IndexEvaluation::new());
+    //     }
 
-        self.inner
-            .borrow_mut()
-            .get_mut(&from_index)
-            .unwrap()
-            .insert(to_index, evaluation);
+    //     self.inner
+    //         .get_mut(&from_index)
+    //         .unwrap()
+    //         .insert(to_index, evaluation);
+    // }
+
+    pub fn insert(&mut self, from_index: usize, index_evaluation: IndexEvaluation) {
+        if self.inner.contains_key(&from_index) {
+            self.inner
+                .get_mut(&from_index)
+                .unwrap()
+                .append(index_evaluation);
+        } else {
+            self.inner.insert(from_index, index_evaluation);
+        }
     }
 
-    pub fn append(&self, other_aspect_evaluation: Self) {
-        for (from_index, index_evaluation) in other_aspect_evaluation.inner.into_inner() {
-            if index_evaluation.inner.is_empty() {
-                self.inner.borrow_mut().insert(from_index, index_evaluation);
-            } else {
-                for (to_index, evaluation) in index_evaluation.inner {
-                    self.insert_evaluation(from_index, to_index, evaluation);
-                }
-            }
+    pub fn append(&mut self, other_aspect_evaluation: Self) {
+        for (from_index, index_evaluation) in other_aspect_evaluation.inner {
+            self.insert(from_index, index_evaluation);
         }
     }
 
     pub fn to_string(&self) -> String {
         let mut result = String::new();
-        for (from_index, index_evaluation) in self.inner.borrow().iter() {
+        for (from_index, index_evaluation) in self.inner.iter() {
             let coord = coord::Coord::from_index(*from_index).unwrap();
             result.push_str(&format!(
                 "{}=>{}",
@@ -145,10 +164,7 @@ impl AspectEvaluation {
                 index_evaluation.to_string()
             ));
         }
-        result.push_str(&format!(
-            "aspect_evaluation.len:{}\n",
-            self.inner.borrow().len()
-        ));
+        result.push_str(&format!("aspect_evaluation.len:{}\n", self.inner.len()));
 
         result
     }
@@ -161,24 +177,8 @@ impl ZorbistEvaluation {
         }
     }
 
-    pub fn from(key: u64, lock: u64, aspect_evaluation: AspectEvaluation) -> Self {
-        let mut zorbist_evaluation = Self::new();
-        zorbist_evaluation.insert_kla(key, lock, aspect_evaluation);
-
-        zorbist_evaluation
-    }
-
-    pub fn insert_values(&mut self, values: (u64, u64, usize, usize, usize)) {
-        let (key, lock, from_index, to_index, count) = values;
-        self.insert_kla(
-            key,
-            lock,
-            AspectEvaluation::from_values(from_index, to_index, count),
-        );
-    }
-
-    pub fn insert_kla(&mut self, key: u64, lock: u64, aspect_evaluation: AspectEvaluation) {
-        match self.get_aspect_evaluation(key, lock) {
+    fn insert_key_lock_aspect(&mut self, key: u64, lock: u64, aspect_evaluation: AspectEvaluation) {
+        match self.get_mut_aspect_evaluation(key, lock) {
             Some(old_aspect_evaluation) => old_aspect_evaluation.append(aspect_evaluation),
             None => {
                 self.inner.insert(key, (lock, aspect_evaluation));
@@ -186,13 +186,45 @@ impl ZorbistEvaluation {
         }
     }
 
+    pub fn from(key: u64, lock: u64, aspect_evaluation: AspectEvaluation) -> Self {
+        let mut zorbist_evaluation = Self::new();
+        zorbist_evaluation.insert_key_lock_aspect(key, lock, aspect_evaluation);
+
+        zorbist_evaluation
+    }
+
+    pub fn insert_values(&mut self, values: (u64, u64, usize, usize, usize)) {
+        let (key, lock, from_index, to_index, count) = values;
+        self.insert_key_lock_aspect(
+            key,
+            lock,
+            AspectEvaluation::from_values(from_index, to_index, count),
+        );
+    }
+
     pub fn append(&mut self, other_zorbist_evaluation: Self) {
         for (key, (lock, aspect_evaluation)) in other_zorbist_evaluation.inner {
-            self.insert_kla(key, lock, aspect_evaluation);
+            self.insert_key_lock_aspect(key, lock, aspect_evaluation);
         }
     }
 
     pub fn get_aspect_evaluation(&self, key: u64, lock: u64) -> Option<&AspectEvaluation> {
+        let real_key = self.get_real_key(key, lock)?;
+
+        self.inner
+            .get(&real_key)
+            .map(|(_, aspect_evaluation)| aspect_evaluation)
+    }
+
+    fn get_mut_aspect_evaluation(&mut self, key: u64, lock: u64) -> Option<&mut AspectEvaluation> {
+        let real_key = self.get_real_key(key, lock)?;
+
+        self.inner
+            .get_mut(&real_key)
+            .map(|(_, aspect_evaluation)| aspect_evaluation)
+    }
+
+    fn get_real_key(&self, key: u64, lock: u64) -> Option<u64> {
         let mut real_key = key;
         if !self.inner.contains_key(&key) {
             return None;
@@ -210,16 +242,15 @@ impl ZorbistEvaluation {
             self.inner.contains_key(&real_key),
             "Key:({key:016x})->RealKey:({real_key:016x})'s Lock({lock:016x}) is not find!\n"
         );
-        self.inner
-            .get(&real_key)
-            .map(|(_, aspect_evaluation)| aspect_evaluation)
+
+        Some(real_key)
     }
 
     pub fn get_data_values(&self) -> Vec<(u64, u64, usize, usize, usize)> {
         let mut result = vec![];
         for (key, lock_aspect_eval) in &self.inner {
             let (lock, aspect_eval) = lock_aspect_eval;
-            for (from_index, index_eval) in aspect_eval.inner.borrow().iter() {
+            for (from_index, index_eval) in aspect_eval.inner.iter() {
                 for (to_index, eval) in &index_eval.inner {
                     result.push((*key, *lock, *from_index, *to_index, eval.count));
                 }
@@ -248,16 +279,16 @@ impl ZorbistEvaluation {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{common, manual};
+    use crate::manual;
 
     #[test]
     fn test_evaluation() {
         let filename_manuals = crate::common::get_filename_manuals();
         let manuals = filename_manuals
-            .iter()
+            .into_iter()
             .map(|(_, _, manual)| manual)
-            .collect::<Vec<&manual::Manual>>();
-        let zorbist_evaluation = common::get_zorbist_evaluation(manuals);
+            .collect::<Vec<manual::Manual>>();
+        let zorbist_evaluation = manual::get_zorbist_evaluation_manuals(manuals);
 
         let result = zorbist_evaluation.to_string();
         std::fs::write(format!("tests/output/zobrist_evaluation.txt"), result).expect("Write Err.");

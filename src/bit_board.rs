@@ -239,11 +239,9 @@ impl BitBoard {
         let count = if is_killed { 0 } else { 1 };
         // 扩展，增加其他功能
 
-        aspect_evaluation.insert_evaluation(
-            from_index,
-            to_index,
-            evaluation::Evaluation::new(count),
-        );
+        aspect_evaluation.append(evaluation::AspectEvaluation::from_values(
+            from_index, to_index, count,
+        ));
     }
 
     // 执行某一着后回退（保持原局面不变）
@@ -278,7 +276,7 @@ impl BitBoard {
         &mut self,
         bit_atom: bit_constant::BitAtom,
     ) -> evaluation::AspectEvaluation {
-        let aspect_evaluation = evaluation::AspectEvaluation::new();
+        let mut aspect_evaluation = evaluation::AspectEvaluation::new();
         for from_index in bit_constant::get_indexs_from_bitatom(bit_atom) {
             aspect_evaluation.append(self.get_aspect_evaluation_index(from_index));
         }

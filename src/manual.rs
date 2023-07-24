@@ -3,6 +3,7 @@
 use crate::coord::{self, COLCOUNT, ROWCOUNT, SEATCOUNT};
 use encoding::all::GBK;
 use encoding::{DecoderTrap, Encoding};
+// use serde::de::value;
 // use serde_derive::{Deserialize, Serialize};
 // use serde_json;
 // use regex::Error;
@@ -15,6 +16,7 @@ use crate::common;
 use crate::evaluation;
 use crate::manual_move;
 use std::borrow::Borrow;
+use std::cell::RefCell;
 use std::collections::BTreeMap;
 // use std::rc::Rc;
 use num_enum::TryFromPrimitive;
@@ -60,9 +62,18 @@ pub fn get_fen(info: &ManualInfo) -> &str {
     board::FEN
 }
 
+pub fn get_zorbist_evaluation_manuals(manuals: Vec<Manual>) -> evaluation::ZorbistEvaluation {
+    let mut zorbist_evaluation = evaluation::ZorbistEvaluation::new();
+    for manual in manuals {
+        zorbist_evaluation.append(manual.manual_move.get_zorbist_evaluation());
+    }
+
+    zorbist_evaluation
+}
+
 #[derive(Debug)]
 pub struct Manual {
-    info: ManualInfo,
+    info: RefCell<ManualInfo>,
     pub manual_move: manual_move::ManualMove,
 }
 
@@ -74,13 +85,17 @@ impl PartialEq for Manual {
 
 impl Manual {
     pub fn new() -> Self {
+        Manual::from(ManualInfo::new(), manual_move::ManualMove::new())
+    }
+
+    pub fn from(info: ManualInfo, manual_move: manual_move::ManualMove) -> Self {
         Manual {
-            info: ManualInfo::new(),
-            manual_move: manual_move::ManualMove::new(),
+            info: RefCell::new(info),
+            manual_move,
         }
     }
 
-    pub fn from(file_name: &str) -> common::Result<Self> {
+    pub fn from_filename(file_name: &str) -> common::Result<Self> {
         let record_type = coord::RecordType::get_record_type(file_name)?;
         match record_type {
             coord::RecordType::Xqf => Self::from_xqf(file_name),
@@ -98,26 +113,16 @@ impl Manual {
                 manual_move::ManualMove::from_rowcols(fen, rowcols_str)
             }
             false => {
-                // println!("manual_move_str:{manual_move_str}\n");
-                // println!("fen:{fen}\n");
                 manual_move::ManualMove::from_string(fen, manual_move_str, coord::RecordType::PgnZh)
             }
         }?;
 
-        Ok(Manual { info, manual_move })
+        Ok(Manual::from(info, manual_move))
     }
 
     pub fn get_info(&self) -> ManualInfo {
-        self.info.clone()
+        self.info.borrow().clone()
     }
-
-    // pub fn set_info(&mut self, key: String, value: String) {
-    //     if let Some(ref_value) = self.info.get_mut(&key) {
-    //         *ref_value = value;
-    //     } else {
-    //         self.info.insert(key, value);
-    //     }
-    // }
 
     pub fn write(&self, file_name: &str) -> Result<(), std::io::ErrorKind> {
         let record_type =
@@ -289,7 +294,7 @@ impl Manual {
             );
         }
 
-        Ok(Manual { info, manual_move })
+        Ok(Manual::from(info, manual_move))
     }
 
     pub fn from_bin(file_name: &str) -> common::Result<Self> {
@@ -310,13 +315,13 @@ impl Manual {
             manual_move = manual_move::ManualMove::from_bin(&fen, &mut input);
         }
 
-        Ok(Manual { info, manual_move })
+        Ok(Manual::from(info, manual_move))
     }
 
     pub fn get_bytes(&self) -> Vec<u8> {
         let mut result = Vec::new();
-        common::write_be_u32(&mut result, self.info.len() as u32);
-        for (key, value) in &self.info {
+        common::write_be_u32(&mut result, self.info.borrow().len() as u32);
+        for (key, value) in self.info.borrow().iter() {
             common::write_string(&mut result, key);
             common::write_string(&mut result, value);
         }
@@ -347,15 +352,26 @@ impl Manual {
         // }
         let manual_move = manual_move::ManualMove::from_string(fen, manual_move_str, record_type)?;
 
-        Ok(Manual { info, manual_move })
+        Ok(Manual::from(info, manual_move))
     }
 
-    pub fn get_zorbist_evaluation(&self) -> evaluation::ZorbistEvaluation {
-        self.manual_move.get_zorbist_evaluation()
+    fn set_info(&self, info_key: InfoKey, value: String) {
+        self.info.borrow_mut().insert(info_key.to_string(), value);
     }
 
-    pub fn to_rowcols(&self) -> String {
-        self.manual_move.to_rowcols()
+    pub fn set_source(&self, source: String) {
+        self.set_info(InfoKey::Source, source);
+    }
+
+    pub fn set_rowcols(&self) {
+        self.set_info(InfoKey::RowCols, self.manual_move.to_rowcols());
+    }
+
+    pub fn set_manualmove_string(&self) {
+        self.set_info(
+            InfoKey::MoveString,
+            self.manual_move.to_string(coord::RecordType::PgnZh),
+        );
     }
 
     pub fn get_manualmove_string(&self, record_type: coord::RecordType) -> String {
@@ -364,7 +380,7 @@ impl Manual {
 
     pub fn to_string(&self, record_type: coord::RecordType) -> String {
         let mut info_str = String::new();
-        for (key, value) in &self.info {
+        for (key, value) in self.info.borrow().iter() {
             info_str.push_str(&format!("[{key}: {value}]\n"));
         }
 
@@ -402,7 +418,7 @@ mod tests {
                     let _ = manual.write(&file_path);
                 }
 
-                let manual = Manual::from(&file_path).unwrap();
+                let manual = Manual::from_filename(&file_path).unwrap();
                 assert_eq!(
                     manual_string,
                     manual.to_string(coord::RecordType::Txt),

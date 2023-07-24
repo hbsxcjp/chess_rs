@@ -28,7 +28,7 @@ impl error::Error for ParseError {
 
 // use std::convert::TryInto;
 use crate::coord::CoordPair;
-use crate::evaluation;
+// use crate::evaluation;
 use crate::manual;
 
 fn read_bytes(input: &mut &[u8], size: usize) -> Vec<u8> {
@@ -78,21 +78,12 @@ pub fn read_string(input: &mut &[u8]) -> String {
 pub fn get_filename_manuals() -> Vec<(&'static str, &'static str, manual::Manual)> {
     let mut filename_manuals = Vec::<(&str, &str, manual::Manual)>::new();
     for (file_name, manual_str) in FILE_NAME_MANUAL_STRINGS {
-        if let Ok(manual) = manual::Manual::from(&format!("tests/xqf/{file_name}.xqf")) {
+        if let Ok(manual) = manual::Manual::from_filename(&format!("tests/xqf/{file_name}.xqf")) {
             filename_manuals.push((file_name, manual_str, manual));
         }
     }
 
     filename_manuals
-}
-
-pub fn get_zorbist_evaluation(manuals: Vec<&manual::Manual>) -> evaluation::ZorbistEvaluation {
-    let mut zorbist_evaluation = evaluation::ZorbistEvaluation::new();
-    for manual in manuals {
-        zorbist_evaluation.append(manual.get_zorbist_evaluation());
-    }
-
-    zorbist_evaluation
 }
 
 pub const FILE_NAME_MANUAL_STRINGS:[(&str,&str);5] = [

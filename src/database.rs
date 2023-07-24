@@ -1,6 +1,6 @@
 #![allow(dead_code)]
 
-use crate::{coord, evaluation, manual};
+use crate::{evaluation, manual};
 use rusqlite::{params, Connection, Result};
 
 const MANUAL_TABLE: &str = "manual";
@@ -61,19 +61,16 @@ pub fn clear_table(conn: &mut Connection, table: &str) -> Result<()> {
 
 pub fn insert_manuals(
     conn: &mut Connection,
-    filename_manuals: &Vec<(&str, &str, manual::Manual)>,
+    filename_manuals: &Vec<(&str, manual::Manual)>,
 ) -> Result<()> {
     let transcation = conn.transaction()?;
 
-    for (filename, _, manual) in filename_manuals {
-        let mut info = manual.get_info();
-        info.insert(manual::InfoKey::Source.to_string(), filename.to_string());
-        info.insert(manual::InfoKey::RowCols.to_string(), manual.to_rowcols());
-        info.insert(
-            manual::InfoKey::MoveString.to_string(),
-            manual.get_manualmove_string(coord::RecordType::PgnZh),
-        );
+    for (filename, manual) in filename_manuals {
+        manual.set_source(filename.to_string());
+        manual.set_rowcols();
+        manual.set_manualmove_string();
 
+        let info = manual.get_info();
         let keys = info.keys().cloned().collect::<Vec<String>>().join(", ");
         let values = info
             .values()
@@ -143,8 +140,8 @@ pub fn get_manuals(conn: &mut Connection, cond: &str) -> Vec<manual::Manual> {
         .unwrap();
 
     let mut manuals = Vec::<manual::Manual>::new();
-    for info_opt in info_iter {
-        if let Ok(manual) = manual::Manual::from_info(info_opt.unwrap()) {
+    for info in info_iter {
+        if let Ok(manual) = manual::Manual::from_info(info.unwrap()) {
             manuals.push(manual);
         }
     }
@@ -209,7 +206,10 @@ mod tests {
 
     #[test]
     fn test_database() {
-        let filename_manuals = common::get_filename_manuals();
+        let filename_manuals = common::get_filename_manuals()
+            .into_iter()
+            .map(|(filename, _, manual)| (filename, manual))
+            .collect::<Vec<(&str, manual::Manual)>>();
 
         // 初始化数据表
         let mut conn = get_connection();
@@ -221,7 +221,7 @@ mod tests {
             .map_err(|err| assert!(false, "insert_manuals: {:?}!\n", err));
         let manuals = get_manuals(&mut conn, "id < 6");
         for (index, manual) in manuals.iter().enumerate() {
-            assert!(filename_manuals[index].2 == *manual);
+            assert!(filename_manuals[index].1 == *manual);
         }
 
         // 网络棋谱
@@ -231,7 +231,7 @@ mod tests {
         for (index, manual) in xqbase_manuals.iter().enumerate() {
             std::fs::write(
                 format!("tests/output/xqbase_{index}.txt"),
-                manual.to_string(coord::RecordType::PgnZh),
+                manual.to_string(crate::coord::RecordType::PgnZh),
             )
             .expect("Write Err.");
         }
@@ -240,11 +240,7 @@ mod tests {
         let _ = clear_table(&mut conn, ZORBIST_TABLE);
         // manuals.append(&mut xqbase_manuals);
         let manuals = get_manuals(&mut conn, "id > 5 AND id < 11"); // AND id < 11
-        let manuals = manuals
-            .iter()
-            .map(|manual| manual)
-            .collect::<Vec<&manual::Manual>>();
-        let zorbist_evaluation = common::get_zorbist_evaluation(manuals);
+        let zorbist_evaluation = manual::get_zorbist_evaluation_manuals(manuals);
         let _ = insert_zorbist_evaluation(&mut conn, &zorbist_evaluation)
             .map_err(|err| assert!(false, "insert_zorbist_evaluation: {:?}!\n", err));
         let zorbist_eval_from_database = get_zorbist_evaluation(&mut conn);
