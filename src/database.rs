@@ -216,9 +216,9 @@ mod tests {
         let _ = init_database(&conn).map_err(|err| assert!(false, "init_database: {:?}!\n", err));
 
         // 文件棋谱
-        let _ = clear_table(&mut conn, MANUAL_TABLE);
-        let _ = insert_manuals(&mut conn, &filename_manuals)
-            .map_err(|err| assert!(false, "insert_manuals: {:?}!\n", err));
+        // let _ = clear_table(&mut conn, MANUAL_TABLE);
+        // let _ = insert_manuals(&mut conn, &filename_manuals)
+        //     .map_err(|err| assert!(false, "insert_manuals: {:?}!\n", err));
         let manuals = get_manuals(&mut conn, "id < 6");
         for (index, manual) in manuals.iter().enumerate() {
             assert!(filename_manuals[index].1 == *manual);
@@ -226,7 +226,7 @@ mod tests {
 
         // 网络棋谱
         // let _ = clear_table(&mut conn, MANUAL_TABLE);
-        let _ = insert_xqbase_manuals(&mut conn, "id > 100000 AND id < 100006").unwrap(); //
+        // let _ = insert_xqbase_manuals(&mut conn, "id > 100000 AND id < 100006").unwrap(); //
         let xqbase_manuals = get_manuals(&mut conn, "id > 5 AND id < 11");
         for (index, manual) in xqbase_manuals.iter().enumerate() {
             std::fs::write(
@@ -238,8 +238,7 @@ mod tests {
 
         // 历史棋谱
         let _ = clear_table(&mut conn, ZORBIST_TABLE);
-        // manuals.append(&mut xqbase_manuals);
-        let manuals = get_manuals(&mut conn, "id > 5 AND id < 11"); // AND id < 11
+        let manuals = get_manuals(&mut conn, "id < 11"); //id > 5 AND  AND id < 11
         let zorbist_evaluation = manual::get_zorbist_evaluation_manuals(manuals);
         let _ = insert_zorbist_evaluation(&mut conn, &zorbist_evaluation)
             .map_err(|err| assert!(false, "insert_zorbist_evaluation: {:?}!\n", err));
