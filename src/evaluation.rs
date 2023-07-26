@@ -177,7 +177,7 @@ impl ZorbistEvaluation {
         }
     }
 
-    fn insert_key_lock_aspect(&mut self, key: u64, lock: u64, aspect_evaluation: AspectEvaluation) {
+    pub fn insert_key_lock_aspect(&mut self, key: u64, lock: u64, aspect_evaluation: AspectEvaluation) {
         match self.get_mut_aspect_evaluation(key, lock) {
             Some(old_aspect_evaluation) => old_aspect_evaluation.append(aspect_evaluation),
             None => {

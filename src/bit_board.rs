@@ -10,6 +10,8 @@ use crate::coord::{
     self, COLCOUNT, COLSTATECOUNT, LEGSTATECOUNT, ROWCOUNT, ROWSTATECOUNT, SEATCOUNT, SIDECOUNT,
 };
 use crate::evaluation;
+use crate::manual;
+use crate::manual_move;
 use crate::piece::{self, COLORCOUNT, KINDCOUNT};
 
 type OperateEvaluation = fn(
@@ -69,7 +71,7 @@ impl BitBoard {
         bit_board
     }
 
-    pub fn get_color(&self, index: usize) -> Option<piece::Color> {
+    fn get_color(&self, index: usize) -> Option<piece::Color> {
         let index_mask = bit_constant::MASK[index];
         if self.color_pieces[piece::Color::Red as usize] & index_mask != 0 {
             Some(piece::Color::Red)
@@ -168,6 +170,10 @@ impl BitBoard {
         eat_kind: piece::Kind,
     ) -> piece::Kind {
         self.operate_move(from_index, to_index, true, eat_kind)
+    }
+
+    fn is_valid(&self, color: piece::Color, from_index: usize, to_index: usize) -> bool {
+        self.get_color(from_index).unwrap() == color && self.get_color(to_index).unwrap() != color
     }
 
     fn operate_move(
@@ -338,6 +344,29 @@ impl BitBoard {
         );
 
         self.get_zorbist_evaluation(color, aspect_evaluation)
+    }
+
+    pub fn get_zorbist_evaluation_rowcols(
+        &mut self,
+        rowcols: String,
+    ) -> evaluation::ZorbistEvaluation {
+        let mut zorbist_evaluation = evaluation::ZorbistEvaluation::new();
+        let mut color = piece::Color::Red;
+        for coordpair in manual_move::ManualMove::get_coordpairs_from_rowcols(&rowcols).unwrap() {
+            let (from_index, to_index) = coordpair.from_to_index();
+            let aspect_evaluation =
+                evaluation::AspectEvaluation::from_values(from_index, to_index, 1);
+            zorbist_evaluation.insert_key_lock_aspect(
+                self.get_key(color),
+                self.get_lock(color),
+                aspect_evaluation,
+            );
+
+            self.do_move(from_index, to_index);
+            color = piece::other_color(color);
+        }
+
+        zorbist_evaluation
     }
 
     pub fn get_aspect_evaluation<'a, 'b>(

@@ -44,11 +44,8 @@ impl ManualMove {
     pub fn from_rowcols(fen: &str, rowcols: &str) -> common::Result<Self> {
         let root_move = amove::Move::root();
         let mut amove = root_move.clone();
-        for index in 0..(rowcols.len() / 4) {
-            let coordpair = CoordPair::from_string(
-                &rowcols[index * 4..(index + 1) * 4],
-                coord::RecordType::PgnRc,
-            )?;
+        let coordpairs = Self::get_coordpairs_from_rowcols(rowcols)?;
+        for coordpair in coordpairs {
             amove = amove.append(coordpair, String::new());
         }
 
@@ -321,6 +318,19 @@ impl ManualMove {
         }
 
         reslut
+    }
+
+    pub fn get_coordpairs_from_rowcols(rowcols: &str) -> common::Result<Vec<coord::CoordPair>> {
+        let mut coordpairs = vec![];
+        for index in 0..(rowcols.len() / 4) {
+            let coordpair = CoordPair::from_string(
+                &rowcols[index * 4..(index + 1) * 4],
+                coord::RecordType::PgnRc,
+            )?;
+            coordpairs.push(coordpair);
+        }
+
+        Ok(coordpairs)
     }
 
     pub fn to_string(&self, record_type: coord::RecordType) -> String {
