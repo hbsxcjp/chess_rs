@@ -126,17 +126,6 @@ impl AspectEvaluation {
         aspect_evaluation
     }
 
-    // pub fn insert_evaluation(&self, from_index: usize, to_index: usize, evaluation: Evaluation) {
-    //     if !self.inner.contains_key(&from_index) {
-    //         self.inner.insert(from_index, IndexEvaluation::new());
-    //     }
-
-    //     self.inner
-    //         .get_mut(&from_index)
-    //         .unwrap()
-    //         .insert(to_index, evaluation);
-    // }
-
     pub fn insert(&mut self, from_index: usize, index_evaluation: IndexEvaluation) {
         if self.inner.contains_key(&from_index) {
             self.inner
@@ -177,7 +166,14 @@ impl ZorbistEvaluation {
         }
     }
 
-    pub fn insert_key_lock_aspect(&mut self, key: u64, lock: u64, aspect_evaluation: AspectEvaluation) {
+    pub fn from(key: u64, lock: u64, aspect_evaluation: AspectEvaluation) -> Self {
+        let mut zorbist_evaluation = Self::new();
+        zorbist_evaluation.insert(key, lock, aspect_evaluation);
+
+        zorbist_evaluation
+    }
+
+    pub fn insert(&mut self, key: u64, lock: u64, aspect_evaluation: AspectEvaluation) {
         match self.get_mut_aspect_evaluation(key, lock) {
             Some(old_aspect_evaluation) => old_aspect_evaluation.append(aspect_evaluation),
             None => {
@@ -186,25 +182,9 @@ impl ZorbistEvaluation {
         }
     }
 
-    pub fn from(key: u64, lock: u64, aspect_evaluation: AspectEvaluation) -> Self {
-        let mut zorbist_evaluation = Self::new();
-        zorbist_evaluation.insert_key_lock_aspect(key, lock, aspect_evaluation);
-
-        zorbist_evaluation
-    }
-
-    pub fn insert_values(&mut self, values: (u64, u64, usize, usize, usize)) {
-        let (key, lock, from_index, to_index, count) = values;
-        self.insert_key_lock_aspect(
-            key,
-            lock,
-            AspectEvaluation::from_values(from_index, to_index, count),
-        );
-    }
-
     pub fn append(&mut self, other_zorbist_evaluation: Self) {
         for (key, (lock, aspect_evaluation)) in other_zorbist_evaluation.inner {
-            self.insert_key_lock_aspect(key, lock, aspect_evaluation);
+            self.insert(key, lock, aspect_evaluation);
         }
     }
 

@@ -208,8 +208,10 @@ pub fn get_zorbist_evaluation(conn: &mut Connection) -> evaluation::ZorbistEvalu
 
     let mut zorbist_evaluation = evaluation::ZorbistEvaluation::new();
     for row in row_iter {
-        if let Ok(values) = row {
-            zorbist_evaluation.insert_values(values);
+        if let Ok((key, lock, from_index, to_index, count)) = row {
+            let aspect_evaluation =
+                evaluation::AspectEvaluation::from_values(from_index, to_index, count);
+            zorbist_evaluation.insert(key, lock, aspect_evaluation);
         }
     }
 
@@ -272,23 +274,26 @@ mod tests {
         // 历史棋谱
         let test_zorbist = true;
         if test_zorbist {
-            let _ = clear_table(&mut conn, ZORBIST_TABLE);
+            // 存入数据库
+            // let _ = clear_table(&mut conn, ZORBIST_TABLE);
             // let manuals = get_manuals(&mut conn, "id < 11"); //id > 5 AND  AND id < 11
             // let zorbist_evaluation = manual::get_zorbist_evaluation_manuals(manuals);
 
-            let rowcols_vec = get_rowcols(&mut conn, "id > 5"); //id > 5 AND  AND id < 11
-            println!("rowcols_vec: {}", rowcols_vec.len());
-            let zorbist_evaluation = get_zorbist_evaluation_rowcols_vec(rowcols_vec);
+            // let rowcols_vec = get_rowcols(&mut conn, "id > 5  AND id < 80000"); //
+            // println!("rowcols_vec: {}", rowcols_vec.len());
+            // let zorbist_evaluation = get_zorbist_evaluation_rowcols_vec(rowcols_vec);
+            // let _ = insert_zorbist_evaluation(&mut conn, &zorbist_evaluation)
+            //     .map_err(|err| assert!(false, "insert_zorbist_evaluation: {:?}!\n", err));
 
-            let _ = insert_zorbist_evaluation(&mut conn, &zorbist_evaluation)
-                .map_err(|err| assert!(false, "insert_zorbist_evaluation: {:?}!\n", err));
-            let zorbist_eval_from_database = get_zorbist_evaluation(&mut conn);
-            let result = zorbist_eval_from_database.to_string();
-            std::fs::write(
-                format!("tests/output/zorbist_eval_from_database.txt"),
-                result,
-            )
-            .expect("Write Err.");
+            // 从数据库提取
+            let _ = get_zorbist_evaluation(&mut conn);
+            // let zorbist_eval_from_database = get_zorbist_evaluation(&mut conn);
+            // let result = zorbist_eval_from_database.to_string();
+            // std::fs::write(
+            //     format!("tests/output/zorbist_eval_from_database.txt"),
+            //     result,
+            // )
+            // .expect("Write Err.");
         }
     }
 }
