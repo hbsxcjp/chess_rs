@@ -1,5 +1,9 @@
 #![allow(dead_code)]
 
+extern crate rayon;
+// use rayon::prelude::*;
+// use std::collections::HashMap;
+
 use crate::{evaluation, manual};
 use rusqlite::{params, Connection, Result};
 
@@ -120,22 +124,22 @@ pub fn insert_xqbase_manuals(conn: &mut Connection, cond: &str) -> Result<()> {
     transcation.commit()
 }
 
-pub fn get_rowcols(conn: &mut Connection, cond: &str) -> Vec<String> {
-    let sql = format!("SELECT RowCols FROM {MANUAL_TABLE} WHERE {cond}");
-    let mut stmt = conn.prepare(&sql).unwrap();
-    let rowcols_iter = stmt
-        .query_map([], |row| row.get::<usize, String>(0))
-        .unwrap();
+// pub fn get_rowcols(conn: &mut Connection, cond: &str) -> Vec<String> {
+//     let sql = format!("SELECT RowCols FROM {MANUAL_TABLE} WHERE {cond}");
+//     let mut stmt = conn.prepare(&sql).unwrap();
+//     let rowcols_iter = stmt
+//         .query_map([], |row| row.get::<usize, String>(0))
+//         .unwrap();
 
-    let mut rowcols_vec = Vec::<String>::new();
-    for rowcols in rowcols_iter {
-        if let Ok(rowcols) = rowcols {
-            rowcols_vec.push(rowcols);
-        }
-    }
+//     let mut rowcols_vec = Vec::<String>::new();
+//     for rowcols in rowcols_iter {
+//         if let Ok(rowcols) = rowcols {
+//             rowcols_vec.push(rowcols);
+//         }
+//     }
 
-    rowcols_vec
-}
+//     rowcols_vec
+// }
 
 pub fn get_manuals(conn: &mut Connection, cond: &str) -> Vec<manual::Manual> {
     let manual_fields = manual_fields();
@@ -206,25 +210,37 @@ pub fn get_zorbist_evaluation(conn: &mut Connection) -> evaluation::ZorbistEvalu
         })
         .unwrap();
 
-    let mut zorbist_evaluation = evaluation::ZorbistEvaluation::new();
+    let mut zorbist = evaluation::ZorbistEvaluation::new();
     for row in row_iter {
         if let Ok((key, lock, from_index, to_index, count)) = row {
-            let aspect_evaluation =
-                evaluation::AspectEvaluation::from_values(from_index, to_index, count);
-            zorbist_evaluation.insert(key, lock, aspect_evaluation);
+            zorbist.insert(
+                key,
+                lock,
+                evaluation::AspectEvaluation::from_values(from_index, to_index, count),
+            );
         }
     }
 
-    zorbist_evaluation
+    zorbist
 }
 
-pub fn get_zorbist_evaluation_rowcols_vec(
-    rowcols_vec: Vec<String>,
+pub fn get_zorbist_evaluation_rowcols(
+    conn: &mut Connection,
+    cond: &str,
 ) -> evaluation::ZorbistEvaluation {
     let mut zorbist_evaluation = evaluation::ZorbistEvaluation::new();
+
+    let sql = format!("SELECT RowCols FROM {MANUAL_TABLE} WHERE {cond}");
+    let mut stmt = conn.prepare(&sql).unwrap();
+    let rowcols_iter = stmt
+        .query_map([], |row| row.get::<usize, String>(0))
+        .unwrap();
+
     let bit_board = crate::board::Board::new().bit_board();
-    for rowcols in rowcols_vec {
-        zorbist_evaluation.append(bit_board.clone().get_zorbist_evaluation_rowcols(rowcols));
+    for rowcols in rowcols_iter {
+        if let Ok(rowcols) = rowcols {
+            zorbist_evaluation.append(bit_board.clone().get_zorbist_evaluation_rowcols(rowcols));
+        }
     }
 
     zorbist_evaluation
@@ -235,27 +251,43 @@ mod tests {
     use super::*;
     use crate::common;
 
-    #[test]
-    fn test_database() {
-        let filename_manuals = common::get_filename_manuals()
+    fn filename_manuals() -> Vec<(&'static str, manual::Manual)> {
+        common::get_filename_manuals()
             .into_iter()
             .map(|(filename, _, manual)| (filename, manual))
-            .collect::<Vec<(&str, manual::Manual)>>();
+            .collect::<Vec<(&str, manual::Manual)>>()
+    }
 
-        // 初始化数据表
-        let mut conn = get_connection();
+    #[test]
+    #[ignore = "忽略：初始化数据库表。"]
+    // 初始化数据表
+    fn test_database_init() {
+        let conn = get_connection();
         let _ = init_database(&conn).map_err(|err| assert!(false, "init_database: {:?}!\n", err));
+    }
 
-        // 存储棋谱
-        let test_insert_manuals = false;
-        if test_insert_manuals {
-            let _ = clear_table(&mut conn, MANUAL_TABLE);
-            let _ = insert_manuals(&mut conn, &filename_manuals)
-                .map_err(|err| assert!(false, "insert_manuals: {:?}!\n", err));
-            let _ = insert_xqbase_manuals(&mut conn, "id > 100000").unwrap(); // AND id < 100006
-        }
+    #[test]
+    #[ignore = "忽略：将manuals存入数据库表。"]
+    // 存储棋谱
+    fn test_database_insert_manuals() {
+        let mut conn = get_connection();
+        let filename_manuals = filename_manuals();
 
-        // 文件棋谱
+        let _ = clear_table(&mut conn, MANUAL_TABLE);
+
+        let _ = insert_manuals(&mut conn, &filename_manuals)
+            .map_err(|err| assert!(false, "insert_manuals: {:?}!\n", err));
+
+        let _ = insert_xqbase_manuals(&mut conn, "id > 100000").unwrap(); // AND id < 100006
+    }
+
+    #[test]
+    #[ignore = "忽略：从数据库提取manuals。"]
+    // 文件棋谱
+    fn test_database_get_manuals() {
+        let mut conn = get_connection();
+        let filename_manuals = filename_manuals();
+
         let xqf_manuals = get_manuals(&mut conn, "id < 6");
         for (index, manual) in xqf_manuals.iter().enumerate() {
             assert!(filename_manuals[index].1 == *manual);
@@ -270,30 +302,37 @@ mod tests {
             )
             .expect("Write Err.");
         }
+    }
 
-        // 历史棋谱
-        let test_zorbist = true;
-        if test_zorbist {
-            // 存入数据库
-            // let _ = clear_table(&mut conn, ZORBIST_TABLE);
-            // let manuals = get_manuals(&mut conn, "id < 11"); //id > 5 AND  AND id < 11
-            // let zorbist_evaluation = manual::get_zorbist_evaluation_manuals(manuals);
+    #[test]
+    #[ignore = "忽略：将zorbist存入数据库表。"]
+    // 历史棋谱存入数据库
+    fn test_database_insert_zorbist() {
+        let mut conn = get_connection();
+        let mut zorbist_evaluation = evaluation::ZorbistEvaluation::new();
 
-            // let rowcols_vec = get_rowcols(&mut conn, "id > 5  AND id < 80000"); //
+        let _ = clear_table(&mut conn, ZORBIST_TABLE);
+        let test_from_manuals = false;
+        zorbist_evaluation.append(if test_from_manuals {
+            let manuals = get_manuals(&mut conn, "id < 11"); //id > 5 AND
+            manual::get_zorbist_evaluation_manuals(manuals)
+        } else {
             // println!("rowcols_vec: {}", rowcols_vec.len());
-            // let zorbist_evaluation = get_zorbist_evaluation_rowcols_vec(rowcols_vec);
-            // let _ = insert_zorbist_evaluation(&mut conn, &zorbist_evaluation)
-            //     .map_err(|err| assert!(false, "insert_zorbist_evaluation: {:?}!\n", err));
+            get_zorbist_evaluation_rowcols(&mut conn, "id > 5 AND id < 110000")
+            // 12146
+        });
 
-            // 从数据库提取
-            let _ = get_zorbist_evaluation(&mut conn);
-            // let zorbist_eval_from_database = get_zorbist_evaluation(&mut conn);
-            // let result = zorbist_eval_from_database.to_string();
-            // std::fs::write(
-            //     format!("tests/output/zorbist_eval_from_database.txt"),
-            //     result,
-            // )
-            // .expect("Write Err.");
-        }
+        let _ = insert_zorbist_evaluation(&mut conn, &zorbist_evaluation)
+            .map_err(|err| assert!(false, "insert_zorbist_evaluation: {:?}!\n", err));
+    }
+
+    #[test]
+    #[ignore = "忽略：从数据库提取zorbist。"]
+    // 从数据库提取
+    fn test_database_get_zorbist() {
+        let mut conn = get_connection();
+        let zorbist = get_zorbist_evaluation(&mut conn);
+
+        println!("zorbist: {}", zorbist.len());
     }
 }

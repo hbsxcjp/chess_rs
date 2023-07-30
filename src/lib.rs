@@ -1,14 +1,16 @@
 mod amove;
 mod bit_board;
 mod bit_constant;
-mod evaluation;
 mod board;
+mod common;
 pub mod coord;
+mod database;
+mod evaluation;
 pub mod manual;
 mod manual_move;
+mod models;
 mod piece;
-mod common;
-mod database;
+mod schema;
 
 // pub use crate::piece;
 

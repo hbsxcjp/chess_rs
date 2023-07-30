@@ -1,38 +1,38 @@
 #![allow(dead_code)]
 // #![allow(unused_imports)]
 
-use serde_derive::{Deserialize, Serialize};
+// use serde_derive::{Deserialize, Serialize};
 // use std::cell::RefCell;
 use std::collections::HashMap;
 
 use crate::{bit_constant, coord};
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Debug)]
 pub struct Evaluation {
     count: usize,
 }
 
 // to_index->Evaluation
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Debug)]
 pub struct IndexEvaluation {
     inner: HashMap<usize, Evaluation>,
 }
 
 // from_index->IndexEvaluation
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Debug)]
 pub struct AspectEvaluation {
     inner: HashMap<usize, IndexEvaluation>,
 }
 
 // #[derive(Debug)]
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Debug)]
 pub struct ZorbistEvaluation {
     inner: HashMap<u64, (u64, AspectEvaluation)>,
 }
 
 // 后期根据需要扩展
 impl Evaluation {
-    pub fn new(count: usize) -> Evaluation {
+    pub fn from(count: usize) -> Evaluation {
         Evaluation { count }
     }
 
@@ -52,11 +52,9 @@ impl IndexEvaluation {
         }
     }
 
-    pub fn from_values(to_index: usize, count: usize) -> Self {
+    pub fn from(to_index: usize, evaluation: Evaluation) -> Self {
         let mut index_evaluation = Self::new();
-        index_evaluation
-            .inner
-            .insert(to_index, Evaluation { count });
+        index_evaluation.inner.insert(to_index, evaluation);
 
         index_evaluation
     }
@@ -121,7 +119,10 @@ impl AspectEvaluation {
 
     pub fn from_values(from_index: usize, to_index: usize, count: usize) -> Self {
         let mut aspect_evaluation = Self::from(from_index);
-        aspect_evaluation.insert(from_index, IndexEvaluation::from_values(to_index, count));
+        aspect_evaluation.insert(
+            from_index,
+            IndexEvaluation::from(to_index, Evaluation::from(count)),
+        );
 
         aspect_evaluation
     }
@@ -141,6 +142,10 @@ impl AspectEvaluation {
         for (from_index, index_evaluation) in other_aspect_evaluation.inner {
             self.insert(from_index, index_evaluation);
         }
+    }
+
+    pub fn len(&self) -> usize {
+        self.inner.len()
     }
 
     pub fn to_string(&self) -> String {
@@ -215,13 +220,18 @@ impl ZorbistEvaluation {
                 break;
             }
 
+            assert!(
+                false,
+                "Key:({key:016x})->RealKey:({real_key:016x})'s Lock({lock:016x}) is not find!\n"
+            );
+
             real_key ^= bit_constant::COLLIDEZOBRISTKEY[index];
         }
 
-        assert!(
-            self.inner.contains_key(&real_key),
-            "Key:({key:016x})->RealKey:({real_key:016x})'s Lock({lock:016x}) is not find!\n"
-        );
+        // assert!(
+        //     self.inner.contains_key(&real_key),
+        //     "Key:({key:016x})->RealKey:({real_key:016x})'s Lock({lock:016x}) is not find!\n"
+        // );
 
         Some(real_key)
     }
@@ -238,6 +248,10 @@ impl ZorbistEvaluation {
         }
 
         result
+    }
+
+    pub fn len(&self) -> usize {
+        self.inner.len()
     }
 
     pub fn to_string(&self) -> String {
@@ -258,7 +272,7 @@ impl ZorbistEvaluation {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    // use super::*;
     use crate::manual;
 
     #[test]
@@ -270,18 +284,23 @@ mod tests {
             .collect::<Vec<manual::Manual>>();
         let zorbist_evaluation = manual::get_zorbist_evaluation_manuals(manuals);
 
+        // let mut conn = database::get_connection();
+        // let zorbist_evaluation = database::get_zorbist_evaluation(&mut conn);
+        // println!("zorbist: {}", zorbist_evaluation.len());
+
         let result = zorbist_evaluation.to_string();
         std::fs::write(format!("tests/output/zobrist_evaluation.txt"), result).expect("Write Err.");
 
-        let json_file_name = "tests/output/serde_json.txt";
-        let result = serde_json::to_string(&zorbist_evaluation).unwrap();
-        std::fs::write(json_file_name, result).expect("Write Err.");
+        // let json_file_name = "tests/output/serde_json.txt";
+        // let result = serde_json::to_string(&zorbist_evaluation).unwrap();
+        // std::fs::write(json_file_name, result).expect("Write Err.");
 
         // serde_json
-        let vec_u8 = std::fs::read(json_file_name).unwrap();
-        let zorbist_eval: ZorbistEvaluation =
-            serde_json::from_str(&String::from_utf8(vec_u8).unwrap()).unwrap();
-        let result = zorbist_eval.to_string();
-        std::fs::write(format!("tests/output/zobrist_eval.txt"), result).expect("Write Err.");
+        // let vec_u8 = std::fs::read(json_file_name).unwrap();
+        // let zorbist_eval: ZorbistEvaluation =
+        //     serde_json::from_str(&String::from_utf8(vec_u8).unwrap()).unwrap();
+        // println!("zorbist_eval: {}", zorbist_eval.len());
+        // let result = zorbist_eval.to_string();
+        // std::fs::write(format!("tests/output/zobrist_eval.txt"), result).expect("Write Err.");
     }
 }
