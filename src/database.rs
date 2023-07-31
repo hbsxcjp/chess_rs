@@ -13,7 +13,12 @@ const BASE_FILE: &str = "tests/output/data.db";
 
 fn manual_fields() -> Vec<String> {
     (0..=(manual::InfoKey::MoveString as usize))
-        .map(|index| manual::InfoKey::try_from(index).unwrap().to_string())
+        .map(|index| {
+            manual::InfoKey::try_from(index)
+                .unwrap()
+                .to_string()
+                .to_ascii_lowercase()
+        })
         .collect::<Vec<String>>()
 }
 
