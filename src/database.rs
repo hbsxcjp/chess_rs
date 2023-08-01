@@ -153,7 +153,7 @@ pub fn get_manuals(conn: &mut Connection, cond: &str) -> Vec<manual::Manual> {
     let mut stmt = conn.prepare(&sql).unwrap();
     let info_iter = stmt
         .query_map([], |row| {
-            let mut info = manual::ManualInfo::new();
+            let mut info = manual::ManualInfoOld::new();
             for (index, field) in manual_fields.iter().enumerate() {
                 if let Ok(value) = row.get::<usize, String>(index) {
                     info.insert(field.to_string(), value);

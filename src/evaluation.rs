@@ -5,7 +5,7 @@
 // use std::cell::RefCell;
 use std::collections::HashMap;
 
-use crate::{bit_constant, coord};
+use crate::{bit_board, bit_constant, coord, piece};
 
 #[derive(Debug)]
 pub struct Evaluation {
@@ -193,7 +193,12 @@ impl ZorbistEvaluation {
         }
     }
 
-    pub fn get_aspect_evaluation(&self, key: u64, lock: u64) -> Option<&AspectEvaluation> {
+    pub fn get_aspect_evaluation(
+        &self,
+        bit_board: &bit_board::BitBoard,
+        color: piece::Color,
+    ) -> Option<&AspectEvaluation> {
+        let (key, lock) = bit_board.get_key_lock(color);
         let real_key = self.get_real_key(key, lock)?;
 
         self.inner

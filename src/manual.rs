@@ -11,17 +11,17 @@ use encoding::{DecoderTrap, Encoding};
 // use std::io::prelude::*;
 // use std::io::BufReader;
 // use serde::de::value;
-use crate::board;
 use crate::common;
 use crate::evaluation;
 use crate::manual_move;
+use crate::{board, models};
 use std::borrow::Borrow;
 use std::cell::RefCell;
 use std::collections::BTreeMap;
 // use std::rc::Rc;
 use num_enum::TryFromPrimitive;
 
-pub type ManualInfo = BTreeMap<String, String>;
+pub type ManualInfoOld = BTreeMap<String, String>;
 
 #[derive(Debug, TryFromPrimitive)]
 #[repr(usize)]
@@ -52,7 +52,7 @@ impl InfoKey {
     }
 }
 
-pub fn get_fen(info: &ManualInfo) -> &str {
+pub fn get_fen(info: &ManualInfoOld) -> &str {
     if let Some(value) = info.get(&InfoKey::FEN.to_string()) {
         if !value.is_empty() {
             return value.split_once(" ").unwrap().0;
@@ -73,7 +73,8 @@ pub fn get_zorbist_evaluation_manuals(manuals: Vec<Manual>) -> evaluation::Zorbi
 
 #[derive(Debug)]
 pub struct Manual {
-    info: RefCell<ManualInfo>,
+    old_info: RefCell<ManualInfoOld>,
+    info: RefCell<models::ManualInfo>,
     pub manual_move: manual_move::ManualMove,
 }
 
@@ -85,11 +86,20 @@ impl PartialEq for Manual {
 
 impl Manual {
     pub fn new() -> Self {
-        Manual::from(ManualInfo::new(), manual_move::ManualMove::new())
+        Manual::from(
+            ManualInfoOld::new(),
+            models::ManualInfo::new(),
+            manual_move::ManualMove::new(),
+        )
     }
 
-    pub fn from(info: ManualInfo, manual_move: manual_move::ManualMove) -> Self {
+    pub fn from(
+        info_old: ManualInfoOld,
+        info: models::ManualInfo,
+        manual_move: manual_move::ManualMove,
+    ) -> Self {
         Manual {
+            old_info: RefCell::new(info_old),
             info: RefCell::new(info),
             manual_move,
         }
@@ -104,7 +114,7 @@ impl Manual {
         }
     }
 
-    pub fn from_info(info: ManualInfo) -> common::Result<Self> {
+    pub fn from_info(info: ManualInfoOld) -> common::Result<Self> {
         let fen = get_fen(&info);
         let manual_move_str = info.get(&InfoKey::MoveString.to_string()).unwrap();
         let manual_move = match manual_move_str.is_empty() {
@@ -117,11 +127,11 @@ impl Manual {
             }
         }?;
 
-        Ok(Manual::from(info, manual_move))
+        Ok(Manual::from(info, models::ManualInfo::new(), manual_move))
     }
 
-    pub fn get_info(&self) -> ManualInfo {
-        self.info.borrow().clone()
+    pub fn get_info(&self) -> ManualInfoOld {
+        self.old_info.borrow().clone()
     }
 
     pub fn write(&self, file_name: &str) -> Result<(), std::io::ErrorKind> {
@@ -138,7 +148,7 @@ impl Manual {
     }
 
     fn from_xqf(file_name: &str) -> common::Result<Self> {
-        let mut info = ManualInfo::new();
+        let mut info = ManualInfoOld::new();
         let mut manual_move = manual_move::ManualMove::new();
         if let Ok(input) = std::fs::read(file_name) {
             //文件标记'XQ'=$5158/版本/加密掩码/ProductId[4], 产品(厂商的产品号)
@@ -294,11 +304,11 @@ impl Manual {
             );
         }
 
-        Ok(Manual::from(info, manual_move))
+        Ok(Manual::from(info, models::ManualInfo::new(), manual_move))
     }
 
     pub fn from_bin(file_name: &str) -> common::Result<Self> {
-        let mut info = ManualInfo::new();
+        let mut info = ManualInfoOld::new();
         let mut manual_move = manual_move::ManualMove::new();
         if let Ok(input) = std::fs::read(file_name) {
             let mut input = input.borrow();
@@ -315,13 +325,13 @@ impl Manual {
             manual_move = manual_move::ManualMove::from_bin(&fen, &mut input);
         }
 
-        Ok(Manual::from(info, manual_move))
+        Ok(Manual::from(info, models::ManualInfo::new(), manual_move))
     }
 
     pub fn get_bytes(&self) -> Vec<u8> {
         let mut result = Vec::new();
-        common::write_be_u32(&mut result, self.info.borrow().len() as u32);
-        for (key, value) in self.info.borrow().iter() {
+        common::write_be_u32(&mut result, self.old_info.borrow().len() as u32);
+        for (key, value) in self.old_info.borrow().iter() {
             common::write_string(&mut result, key);
             common::write_string(&mut result, value);
         }
@@ -337,7 +347,7 @@ impl Manual {
             .split_once("\n\n")
             .ok_or(common::ParseError::StringParse)?;
 
-        let mut info = ManualInfo::new();
+        let mut info = ManualInfoOld::new();
         let info_re = regex::Regex::new(r"\[(\S+): ([\s\S]*?)\]").unwrap();
         for caps in info_re.captures_iter(info_str) {
             let key = caps.at(1).unwrap().to_string();
@@ -352,11 +362,13 @@ impl Manual {
         // }
         let manual_move = manual_move::ManualMove::from_string(fen, manual_move_str, record_type)?;
 
-        Ok(Manual::from(info, manual_move))
+        Ok(Manual::from(info, models::ManualInfo::new(), manual_move))
     }
 
     fn set_info(&self, info_key: InfoKey, value: String) {
-        self.info.borrow_mut().insert(info_key.to_string(), value);
+        self.old_info
+            .borrow_mut()
+            .insert(info_key.to_string(), value);
     }
 
     pub fn set_source(&self, source: String) {
@@ -380,7 +392,7 @@ impl Manual {
 
     pub fn to_string(&self, record_type: coord::RecordType) -> String {
         let mut info_str = String::new();
-        for (key, value) in self.info.borrow().iter() {
+        for (key, value) in self.old_info.borrow().iter() {
             info_str.push_str(&format!("[{key}: {value}]\n"));
         }
 

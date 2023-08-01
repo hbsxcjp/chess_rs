@@ -65,6 +65,10 @@ impl BitBoard {
         }
     }
 
+    pub fn get_key_lock(&self, color: piece::Color) -> (u64, u64) {
+        (self.get_key(color), self.get_lock(color))
+    }
+
     fn get_kind(&self, index: usize) -> piece::Kind {
         let index_mask = bit_constant::MASK[index];
         for kind in [
@@ -385,14 +389,6 @@ impl BitBoard {
         }
 
         zorbist_evaluation
-    }
-
-    pub fn get_aspect_evaluation<'a, 'b>(
-        &'a self,
-        color: piece::Color,
-        zorbist_evaluation: &'b evaluation::ZorbistEvaluation,
-    ) -> Option<&'b evaluation::AspectEvaluation> {
-        zorbist_evaluation.get_aspect_evaluation(self.get_key(color), self.get_lock(color))
     }
 
     pub fn to_string(&mut self) -> String {

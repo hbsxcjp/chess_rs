@@ -1,5 +1,44 @@
 -- Your SQL goes here
 
-CREATE TABLE manual (id INTEGER PRIMARY KEY AUTOINCREMENT, source TEXT, title TEXT, game TEXT, date TEXT, site TEXT, black TEXT, rowcols TEXT, red TEXT, eccosn TEXT, ecconame TEXT, win TEXT, opening TEXT, writer TEXT, author TEXT, atype TEXT, version TEXT, fen TEXT, movestring TEXT);
+CREATE TABLE aspect (
+    id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, 
+    from_index INTEGER NOT NULL, 
 
-CREATE TABLE zorbist ( id INTEGER PRIMARY KEY AUTOINCREMENT, key INTEGER, lock INTEGER, from_index INTEGER, to_index INTEGER, count INTEGER );
+    key BIGINT NOT NULL, 
+    FOREIGN KEY (key) REFERENCES zorbist(id) ON DELETE CASCADE ON UPDATE CASCADE
+);
+
+CREATE TABLE evaluation (
+    id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, 
+    to_index INTEGER NOT NULL, 
+    count INTEGER NOT NULL,
+
+    from_index_id INTEGER NOT NULL, 
+    FOREIGN KEY (from_index_id) REFERENCES aspect(id) ON DELETE CASCADE ON UPDATE CASCADE
+);
+
+CREATE TABLE manual (
+    id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, 
+    source TEXT, 
+    title TEXT NOT NULL, 
+    game TEXT NOT NULL, 
+    date TEXT, 
+    site TEXT, 
+    black TEXT, 
+    rowcols TEXT, 
+    red TEXT, 
+    eccosn TEXT, 
+    ecconame TEXT, 
+    win TEXT, 
+    opening TEXT, 
+    writer TEXT, 
+    author TEXT, 
+    atype TEXT, 
+    version TEXT, 
+    fen TEXT, 
+    movestring TEXT
+);
+
+CREATE TABLE zorbist (
+    id BIGINT PRIMARY KEY NOT NULL
+);
