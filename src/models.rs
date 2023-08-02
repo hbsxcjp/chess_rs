@@ -11,6 +11,8 @@ use diesel::sqlite::SqliteConnection;
 use dotenvy::dotenv;
 use std::env;
 
+pub const MANUAL_FIELD_NUM: u32 = 18;
+
 #[derive(Insertable, Queryable, Selectable)]
 #[diesel(table_name = aspect)]
 #[diesel(check_for_backend(diesel::sqlite::Sqlite))]
@@ -86,12 +88,39 @@ impl ManualInfo {
         }
     }
 
+    pub fn from(key_values: Vec<(String, String)>) -> Self {
+        let mut info = Self::new();
+        for (key, value) in key_values {
+            match key {
+                _ if key == "title" => info.title = value,
+                _ if key == "game" => info.game = value,
+                _ if key == "source" => info.source = Some(value),
+                _ if key == "date" => info.date = Some(value),
+                _ if key == "site" => info.site = Some(value),
+                _ if key == "black" => info.black = Some(value),
+                _ if key == "rowcols" => info.rowcols = Some(value),
+                _ if key == "red" => info.red = Some(value),
+                _ if key == "eccosn" => info.eccosn = Some(value),
+                _ if key == "ecconame" => info.ecconame = Some(value),
+                _ if key == "win" => info.win = Some(value),
+                _ if key == "opening" => info.opening = Some(value),
+                _ if key == "writer" => info.writer = Some(value),
+                _ if key == "author" => info.author = Some(value),
+                _ if key == "atype" => info.atype = Some(value),
+                _ if key == "version" => info.version = Some(value),
+                _ if key == "fen" => info.fen = Some(value),
+                _ if key == "movestring" => info.movestring = Some(value),
+                _ => (),
+            }
+        }
+
+        info
+    }
+
     pub fn get_key_values(&self) -> Vec<(&'static str, &String)> {
-        let mut result = vec![];
+        let mut result = vec![("title", &self.title), ("game", &self.game)];
         for (key, value) in [
             ("source", &self.source),
-            ("title", Some(self.title)),
-            ("game", Some(self.game)),
             ("date", &self.date),
             ("site", &self.site),
             ("black", &self.black),
@@ -115,6 +144,13 @@ impl ManualInfo {
 
         result
     }
+
+    pub fn save_to(&self, conn: &mut SqliteConnection) -> bool {
+        diesel::insert_into(manual::table)
+            .values(self)
+            .execute(conn)
+            .is_ok()
+    }
 }
 
 pub fn establish_connection() -> SqliteConnection {
@@ -133,15 +169,9 @@ mod tests {
     #[test]
     // #[ignore = "忽略：插入数据"]
     fn test() {
-        let connection = &mut establish_connection();
-        let manualinfo = ManualInfo::new();
+        let conn = &mut establish_connection();
 
-        let result = diesel::insert_into(manual::table)
-            .values(&manualinfo)
-            // .returning(ManualInfo::as_returning())
-            // .get_result::<ManualInfo>(connection)
-            .execute(connection)
-            .expect("Error saving new manual");
+        let result = ManualInfo::new().save_to(conn);
         println!("Saved : {:?}", result);
     }
 }

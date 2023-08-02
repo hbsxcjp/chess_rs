@@ -19,9 +19,9 @@ pub type Pieces = [piece::Piece; coord::SEATCOUNT];
 #[derive(TryFromPrimitive, PartialEq)]
 #[repr(usize)]
 pub enum MoveDir {
-    Back,
-    Parallel,
-    Forward,
+    BACK,
+    PARALLEL,
+    FORWARD,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -293,7 +293,7 @@ impl Board {
         let color_is_bottom = color == get_bottom_color(&self.pieces);
         let mut index = 0;
         let move_dir = Self::get_move_dir(zh_chs[2]);
-        let abs_row_sub = (move_dir == MoveDir::Forward) == color_is_bottom;
+        let abs_row_sub = (move_dir == MoveDir::FORWARD) == color_is_bottom;
 
         let mut live_coords: Vec<Coord>;
         let mut kind = piece::kind_from_name(zh_chs[0]);
@@ -307,7 +307,7 @@ impl Board {
             );
 
             // 士、象同列时不分前后，以进、退区分棋子位置
-            if live_coords.len() == 2 && move_dir == MoveDir::Forward {
+            if live_coords.len() == 2 && move_dir == MoveDir::FORWARD {
                 index = 1;
             }
         } else {
@@ -330,7 +330,7 @@ impl Board {
         let col = Self::get_col(color, zh_chs[3]);
         let mut to_col = Coord::get_side_col(col, color_is_bottom);
         if piece::is_line_move(kind) {
-            if move_dir != MoveDir::Parallel {
+            if move_dir != MoveDir::PARALLEL {
                 to_col = from_coord.col;
                 if abs_row_sub {
                     to_row -= col + 1;
