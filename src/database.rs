@@ -167,7 +167,7 @@ pub fn get_manuals(conn: &mut Connection, cond: &str) -> Vec<manual::Manual> {
 
     let mut manuals = Vec::<manual::Manual>::new();
     for info in info_iter {
-        if let Ok(manual) = manual::Manual::from_info(info.unwrap()) {
+        if let Ok(manual) = manual::Manual::from_info_old(info.unwrap()) {
             manuals.push(manual);
         }
     }

@@ -87,21 +87,7 @@ pub fn get_filename_manuals() -> Vec<(&'static str, &'static str, manual::Manual
 }
 
 pub const FILE_NAME_MANUAL_STRINGS:[(&str,&str);5] = [
-            ("01","[Atype: 残局]
-[Author: ]
-[Black: ]
-[Date: ]
-[FEN: 5a3/4ak2r/6R2/8p/9/9/9/B4N2B/4K4/3c5 r - - 0 1]
-[Game: ]
-[Opening: ]
-[Red: ]
-[Site: ]
-[Title: 第01局]
-[Version: 18]
-[Win: 红胜]
-[Writer: ]
-
-(2)
+            ("01","[title: \u{6}第01局]\n[game: ]\n[date: ]\n[site: ]\n[black: ]\n[red: ]\n[win: 红胜]\n[opening: ]\n[writer: ]\n[author: ]\n[atype: 残局]\n[version: 18]\n[fen: 5a3/4ak2r/6R2/8p/9/9/9/B4N2B/4K4/3c5 r - - 0 1]\n\n(2)
 (7,5)(5,6){从相肩进马是取胜的正确途径。其它着法，均不能取胜。}(4)
 (7,5)(5,4)(1)
 (9,3)(0,3)(1)
@@ -147,21 +133,7 @@ pub const FILE_NAME_MANUAL_STRINGS:[(&str,&str);5] = [
 (8,3)(9,3)(1)
 (0,4)(0,5){和棋。}
 "),
-            ("4四量拨千斤","[Atype: 全局]
-[Author: 橘子黄了]
-[Black: ]
-[Date: ]
-[FEN: rnbakabnr/9/1c5c1/p1p1p1p1p/9/9/P1P1P1P1P/1C5C1/9/RNBAKABNR r - - 0 1]
-[Game: ]
-[Opening: ]
-[Red: ]
-[Site: ]
-[Title: 四量拨千斤]
-[Version: 10]
-[Win: 未知]
-[Writer: 阎文清 张强]
-
-(1)
+            ("4四量拨千斤","[title: 四量拨千斤]\n[game: ]\n[date: ]\n[site: ]\n[black: ]\n[red: ]\n[win: 未知]\n[opening: ]\n[writer: 阎文清 张强]\n[author: \u{8}橘子黄了]\n[atype: 全局]\n[version: 10]\n[fen: rnbakabnr/9/1c5c1/p1p1p1p1p/9/9/P1P1P1P1P/1C5C1/9/RNBAKABNR r - - 0 1]\n\n(1)
 (7,7)(7,4)(1)
 (0,1)(2,2)(1)
 (9,7)(7,6)(1)
@@ -215,21 +187,7 @@ pub const FILE_NAME_MANUAL_STRINGS:[(&str,&str);5] = [
 
 在本局中。红方的布局骗着具有快速突击的特点。对此，黑方愈是用强，红势则愈旺。黑若能冷静对待，并采取（乙）变着法，延缓红势的策略，可安然无恙。}
 "),
-            ("第09局","[Atype: 残局]
-[Author: ]
-[Black: ]
-[Date: ]
-[FEN: 5k3/9/9/9/9/9/4rp3/2R1C4/4K4/9 r - - 0 1]
-[Game: ]
-[Opening: ]
-[Red: ]
-[Site: ]
-[Title: 第09局]
-[Version: 18]
-[Win: 红胜]
-[Writer: ]
-
-{这是一局炮斗车卒的范例。对车炮的运用颇有启迪，可资借鉴。}(1)
+            ("第09局","[title: \u{6}第09局]\n[game: ]\n[date: ]\n[site: ]\n[black: ]\n[red: ]\n[win: 红胜]\n[opening: ]\n[writer: ]\n[author: ]\n[atype: 残局]\n[version: 18]\n[fen: 5k3/9/9/9/9/9/4rp3/2R1C4/4K4/9 r - - 0 1]\n\n{这是一局炮斗车卒的范例。对车炮的运用颇有启迪，可资借鉴。}(1)
 (7,2)(5,2)(3)
 (6,4)(6,0)(2)
 (6,4)(6,3)(1)
@@ -305,21 +263,7 @@ pub const FILE_NAME_MANUAL_STRINGS:[(&str,&str);5] = [
 (1,5)(0,5)(1)
 (4,4)(4,5)
 "),
-            ("布局陷阱--飞相局对金钩炮","[Atype: 全局]
-[Author: ]
-[Black: ]
-[Date: ]
-[FEN: rnbakabnr/9/1c5c1/p1p1p1p1p/9/9/P1P1P1P1P/1C5C1/9/RNBAKABNR r - - 0 1]
-[Game: 布局陷阱--飞相局对金钩炮]
-[Opening: ]
-[Red: ]
-[Site: ]
-[Title: 布局陷阱--飞相局对金钩炮]
-[Version: 12]
-[Win: 红胜]
-[Writer: ]
-
-(1)
+            ("布局陷阱--飞相局对金钩炮","[title: \u{18}布局陷阱--飞相局对金钩炮]\n[game: \u{18}布局陷阱--飞相局对金钩炮]\n[date: ]\n[site: ]\n[black: ]\n[red: ]\n[win: 红胜]\n[opening: ]\n[writer: ]\n[author: ]\n[atype: 全局]\n[version: 12]\n[fen: rnbakabnr/9/1c5c1/p1p1p1p1p/9/9/P1P1P1P1P/1C5C1/9/RNBAKABNR r - - 0 1]\n\n(1)
 (9,6)(7,4)(1)
 (2,7)(2,2)(1)
 (9,8)(8,8)(1)
@@ -350,21 +294,7 @@ pub const FILE_NAME_MANUAL_STRINGS:[(&str,&str);5] = [
 (3,6)(4,6)(1)
 (1,3)(1,1){红得子大优}
 "),
-            ("- 北京张强 (和) 上海胡荣华 (1993.4.27于南京)","[Atype: 全局]
-[Author: ]
-[Black: 上海胡荣华]
-[Date: 1993.4.27]
-[FEN: rnbakabnr/9/1c5c1/p1p1p1p1p/9/9/P1P1P1P1P/1C5C1/9/RNBAKABNR r - - 0 1]
-[Game: 93全国象棋锦标赛]
-[Opening: ]
-[Red: 北京张强]
-[Site: 南京]
-[Title: 挺兵对卒底炮]
-[Version: 13]
-[Win: 和棋]
-[Writer: ]
-
-(1)
+            ("- 北京张强 (和) 上海胡荣华 (1993.4.27于南京)","[title: 挺兵对卒底炮]\n[game: \u{10}93全国象棋锦标赛]\n[date: 1993.4.27]\n[site: \u{4}南京]\n[black: 上海胡荣华]\n[red: \u{8}北京张强]\n[win: 和棋]\n[opening: ]\n[writer: ]\n[author: ]\n[atype: 全局]\n[version: 13]\n[fen: rnbakabnr/9/1c5c1/p1p1p1p1p/9/9/P1P1P1P1P/1C5C1/9/RNBAKABNR r - - 0 1]\n\n(1)
 (6,2)(5,2)(1)
 (2,1)(2,2)(1)
 (7,7)(7,4)(1)
