@@ -54,8 +54,8 @@ use std::cell::RefCell;
 
 pub fn get_fen(info: &models::ManualInfo) -> &str {
     if let Some(value) = &info.fen {
-        if !value.is_empty() {
-            return value.split_once(" ").unwrap().0;
+        if let Some((fen, _)) = value.split_once(" ") {
+            return fen;
         }
     }
 
@@ -140,6 +140,21 @@ impl Manual {
         };
 
         Ok(Manual::from(info, manual_move))
+    }
+
+    pub fn from_conn(
+        conn: &mut SqliteConnection,
+        title: &str,
+    ) -> Result<Vec<Self>, diesel::result::Error> {
+        let infos = models::ManualInfo::from_conn(conn, title)?;
+        let mut result = vec![];
+        for info in infos {
+            if let Ok(manual) = Self::from_info(info) {
+                result.push(manual);
+            }
+        }
+
+        Ok(result)
     }
 
     // pub fn get_info(&self) -> ManualInfoOld {
@@ -359,7 +374,8 @@ impl Manual {
 
     pub fn get_bytes(&self) -> Vec<u8> {
         let mut result = Vec::new();
-        common::write_be_u32(&mut result, models::MANUAL_FIELD_NUM);
+        let len = self.info.borrow().get_key_values().len();
+        common::write_be_u32(&mut result, len as u32);
         // common::write_be_u32(&mut result, self.old_info.borrow().len() as u32);
         // for (key, value) in self.old_info.borrow().iter() {
         for (key, value) in self.info.borrow().get_key_values() {
@@ -406,24 +422,21 @@ impl Manual {
     //         .insert(info_key.to_string(), value);
     // }
 
-    pub fn set_source(&self, source: &str) {
+    pub fn set_info_full(&self, source: &str) {
         self.info.borrow_mut().source = Some(source.to_string());
-    }
-
-    pub fn set_rowcols(&self) {
         self.info.borrow_mut().rowcols = Some(self.manual_move.to_rowcols());
-    }
-
-    pub fn set_manualmove_string(&self) {
         self.info.borrow_mut().movestring =
             Some(self.manual_move.to_string(coord::RecordType::PgnZh));
     }
 
-    pub fn save_to(&self, conn: &mut SqliteConnection, source: &str) -> bool {
-        self.set_source(source);
-        self.set_rowcols();
-        self.set_manualmove_string();
+    pub fn clear_info_full(&self) {
+        self.info.borrow_mut().source = None;
+        self.info.borrow_mut().rowcols = None;
+        self.info.borrow_mut().movestring = None;
+    }
 
+    pub fn save_to(&self, conn: &mut SqliteConnection, source: &str) -> bool {
+        self.set_info_full(source);
         self.info.borrow().save_to(conn)
     }
 
@@ -445,7 +458,7 @@ mod tests {
     #[test]
     fn test_manual() {
         let manual = Manual::new();
-        assert_eq!("[title: 未命名]\n[game: 人机对战]\n[fen: rnbakabnr/9/1c5c1/p1p1p1p1p/9/9/P1P1P1P1P/1C5C1/9/RNBAKABNR]\n\n\n", 
+        assert_eq!("[title: 未命名]\n[game: 人机对战]\n[fen: rnbakabnr/9/1c5c1/p1p1p1p1p/9/9/P1P1P1P1P/1C5C1/9/RNBAKABNR r - - 0 1]\n\n\n", 
             manual.to_string(coord::RecordType::Txt));
 
         fn get_file_path(file_name: &str, record_type: coord::RecordType) -> String {
@@ -456,7 +469,6 @@ mod tests {
         let filename_manuals = common::get_filename_manuals();
         for (file_name, manual_string, manual) in filename_manuals {
             assert_eq!(manual_string, manual.to_string(coord::RecordType::Txt));
-            manual.save_to(conn, file_name);
 
             // 输出内容以备查看
             for record_type in [
@@ -478,6 +490,27 @@ mod tests {
                     "file_path: {file_path}"
                 );
             }
+
+            manual.save_to(conn, file_name);
         }
+    }
+
+    #[test]
+    fn test_manual_db() {
+        let conn = &mut models::establish_connection();
+        let filename_manuals = common::get_filename_manuals();
+        for (file_name, _, manual) in &filename_manuals {
+            manual.save_to(conn, file_name);
+        }
+
+        let manual = &Manual::from_conn(conn, "%01%").unwrap()[0];
+        manual.clear_info_full();
+        assert_eq!(
+            filename_manuals[0].1,
+            manual.to_string(coord::RecordType::Txt)
+        );
+
+        let manuals = &Manual::from_conn(conn, "%").unwrap();
+        println!("manuals: {}", manuals.len());
     }
 }

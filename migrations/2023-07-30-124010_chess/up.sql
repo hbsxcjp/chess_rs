@@ -4,8 +4,8 @@ CREATE TABLE aspect (
     id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, 
     from_index INTEGER NOT NULL, 
 
-    key BIGINT NOT NULL, 
-    FOREIGN KEY (key) REFERENCES zorbist(id) ON DELETE CASCADE ON UPDATE CASCADE
+    zorbist_id BIGINT NOT NULL, 
+    FOREIGN KEY (zorbist_id) REFERENCES zorbist(id) ON DELETE CASCADE ON UPDATE CASCADE
 );
 
 CREATE TABLE evaluation (
@@ -13,8 +13,8 @@ CREATE TABLE evaluation (
     to_index INTEGER NOT NULL, 
     count INTEGER NOT NULL,
 
-    from_index_id INTEGER NOT NULL, 
-    FOREIGN KEY (from_index_id) REFERENCES aspect(id) ON DELETE CASCADE ON UPDATE CASCADE
+    aspect_id INTEGER NOT NULL, 
+    FOREIGN KEY (aspect_id) REFERENCES aspect(id) ON DELETE CASCADE ON UPDATE CASCADE
 );
 
 CREATE TABLE manual (

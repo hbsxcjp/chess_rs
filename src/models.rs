@@ -7,6 +7,7 @@ use crate::schema::evaluation;
 use crate::schema::manual;
 use crate::schema::zorbist;
 use diesel::prelude::*;
+use diesel::result::Error;
 use diesel::sqlite::SqliteConnection;
 use dotenvy::dotenv;
 use std::env;
@@ -14,21 +15,31 @@ use std::env;
 pub const MANUAL_FIELD_NUM: u32 = 18;
 
 #[derive(Insertable, Queryable, Selectable)]
-#[diesel(table_name = aspect)]
+#[diesel(table_name = zorbist)]
 #[diesel(check_for_backend(diesel::sqlite::Sqlite))]
-pub struct AspectData {
-    pub id: i32,
-    pub from_index: i32,
-    pub key: i64,
+pub struct Zorbist {
+    pub id: i64,
 }
 
-#[derive(Insertable, Queryable, Selectable)]
+#[derive(Queryable, Selectable, Identifiable, Associations, Debug, PartialEq)]
+#[diesel(belongs_to(Zorbist))]
+#[diesel(table_name = aspect)]
+#[diesel(check_for_backend(diesel::sqlite::Sqlite))]
+pub struct Aspect {
+    pub id: i32,
+    pub from_index: i32,
+    pub zorbist_id: i64,
+}
+
+#[derive(Queryable, Selectable, Identifiable, Associations, Debug, PartialEq)]
+#[diesel(belongs_to(Aspect))]
 #[diesel(table_name = evaluation)]
 #[diesel(check_for_backend(diesel::sqlite::Sqlite))]
-pub struct EvaluationData {
+pub struct Evaluation {
+    pub id: i32,
     pub to_index: i32,
     pub count: i32,
-    pub from_index_id: i32,
+    pub aspect_id: i32,
 }
 
 #[derive(Debug, Insertable, Queryable, Selectable)]
@@ -56,13 +67,6 @@ pub struct ManualInfo {
     pub movestring: Option<String>,
 }
 
-#[derive(Insertable, Queryable, Selectable)]
-#[diesel(table_name = zorbist)]
-#[diesel(check_for_backend(diesel::sqlite::Sqlite))]
-pub struct ZorbistData {
-    pub id: i64,
-}
-
 impl ManualInfo {
     pub fn new() -> Self {
         ManualInfo {
@@ -83,9 +87,23 @@ impl ManualInfo {
             author: None,
             atype: None,
             version: None,
-            fen: Some(board::FEN.to_string()),
+            fen: Some(board::FEN.to_string() + " r - - 0 1"),
             movestring: None,
         }
+    }
+
+    pub fn from_conn(conn: &mut SqliteConnection, title: &str) -> Result<Vec<Self>, Error> {
+        manual::table
+            .filter(manual::title.like(title))
+            .select(Self::as_select())
+            .load::<Self>(conn)
+    }
+
+    pub fn save_to(&self, conn: &mut SqliteConnection) -> bool {
+        diesel::insert_into(manual::table)
+            .values(self)
+            .execute(conn)
+            .is_ok()
     }
 
     pub fn from(key_values: Vec<(String, String)>) -> Self {
@@ -144,13 +162,6 @@ impl ManualInfo {
 
         result
     }
-
-    pub fn save_to(&self, conn: &mut SqliteConnection) -> bool {
-        diesel::insert_into(manual::table)
-            .values(self)
-            .execute(conn)
-            .is_ok()
-    }
 }
 
 pub fn establish_connection() -> SqliteConnection {
@@ -168,7 +179,7 @@ mod tests {
 
     #[test]
     // #[ignore = "忽略：插入数据"]
-    fn test() {
+    fn test_models() {
         let conn = &mut establish_connection();
 
         let result = ManualInfo::new().save_to(conn);

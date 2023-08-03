@@ -4,7 +4,7 @@ diesel::table! {
     aspect (id) {
         id -> Integer,
         from_index -> Integer,
-        key -> BigInt,
+        zorbist_id -> BigInt,
     }
 }
 
@@ -13,7 +13,7 @@ diesel::table! {
         id -> Integer,
         to_index -> Integer,
         count -> Integer,
-        from_index_id -> Integer,
+        aspect_id -> Integer,
     }
 }
 
@@ -47,8 +47,8 @@ diesel::table! {
     }
 }
 
-diesel::joinable!(aspect -> zorbist (key));
-diesel::joinable!(evaluation -> aspect (from_index_id));
+diesel::joinable!(aspect -> zorbist (zorbist_id));
+diesel::joinable!(evaluation -> aspect (aspect_id));
 
 diesel::allow_tables_to_appear_in_same_query!(
     aspect,
