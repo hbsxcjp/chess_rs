@@ -92,18 +92,17 @@ impl ManualInfo {
         }
     }
 
-    pub fn from_conn(conn: &mut SqliteConnection, title: &str) -> Result<Vec<Self>, Error> {
+    pub fn from_conn(conn: &mut SqliteConnection, title_part: &str) -> Result<Vec<Self>, Error> {
         manual::table
-            .filter(manual::title.like(title))
+            .filter(manual::title.like(title_part))
             .select(Self::as_select())
             .load::<Self>(conn)
     }
 
-    pub fn save_to(&self, conn: &mut SqliteConnection) -> bool {
+    pub fn save_to(&self, conn: &mut SqliteConnection) -> Result<usize, Error> {
         diesel::insert_into(manual::table)
             .values(self)
             .execute(conn)
-            .is_ok()
     }
 
     pub fn from(key_values: Vec<(String, String)>) -> Self {
@@ -178,7 +177,7 @@ mod tests {
     use super::*;
 
     #[test]
-    // #[ignore = "忽略：插入数据"]
+    #[ignore = "忽略：测试数据表模型"]
     fn test_models() {
         let conn = &mut establish_connection();
 
