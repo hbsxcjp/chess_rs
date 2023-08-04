@@ -177,7 +177,7 @@ mod tests {
     use super::*;
 
     #[test]
-    #[ignore = "忽略：测试数据表模型"]
+    // #[ignore = "忽略：测试数据表模型"]
     fn test_models() {
         let conn = &mut establish_connection();
 

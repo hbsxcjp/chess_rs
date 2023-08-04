@@ -145,8 +145,8 @@ impl Manual {
     }
 
     pub fn from_conn(conn: &mut SqliteConnection, title_part: &str) -> Result<Vec<Self>, Error> {
-        let infos = models::ManualInfo::from_conn(conn, title_part)?;
         let mut result = vec![];
+        let infos = models::ManualInfo::from_conn(conn, title_part)?;
         for info in infos {
             if let Ok(manual) = Self::from_info(info) {
                 result.push(manual);
