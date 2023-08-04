@@ -90,14 +90,14 @@ impl ManualInfo {
         }
     }
 
-    pub fn from_conn(conn: &mut SqliteConnection, title_part: &str) -> Result<Vec<Self>, Error> {
+    pub fn from_db(conn: &mut SqliteConnection, title_part: &str) -> Result<Vec<Self>, Error> {
         manual::table
             .filter(manual::title.like(title_part))
             .select(Self::as_select())
             .load::<Self>(conn)
     }
 
-    pub fn save_to(&self, conn: &mut SqliteConnection) -> Result<usize, Error> {
+    pub fn save_db(&self, conn: &mut SqliteConnection) -> Result<usize, Error> {
         diesel::insert_into(manual::table)
             .values(self)
             .execute(conn)
@@ -179,7 +179,7 @@ mod tests {
     fn test_models() {
         let conn = &mut establish_connection();
 
-        let result = ManualInfo::new().save_to(conn);
+        let result = ManualInfo::new().save_db(conn);
         println!("Saved : {:?}", result);
     }
 }

@@ -77,9 +77,9 @@ impl Manual {
         Ok(Manual::from(info, manual_move))
     }
 
-    pub fn from_conn(conn: &mut SqliteConnection, title_part: &str) -> Result<Vec<Self>, Error> {
+    pub fn from_db(conn: &mut SqliteConnection, title_part: &str) -> Result<Vec<Self>, Error> {
         let mut result = vec![];
-        let infos = models::ManualInfo::from_conn(conn, title_part)?;
+        let infos = models::ManualInfo::from_db(conn, title_part)?;
         for info in infos {
             if let Ok(manual) = Self::from_info(info) {
                 result.push(manual);
@@ -102,9 +102,9 @@ impl Manual {
         self.info.borrow_mut().movestring = None;
     }
 
-    pub fn save_to(&self, conn: &mut SqliteConnection, source: &str) -> Result<usize, Error> {
+    pub fn save_db(&self, conn: &mut SqliteConnection, source: &str) -> Result<usize, Error> {
         self.set_source_moves(source);
-        self.info.borrow().save_to(conn)
+        self.info.borrow().save_db(conn)
     }
 
     pub fn write(&self, file_name: &str) -> Result<(), std::io::ErrorKind> {
@@ -391,10 +391,10 @@ mod tests {
         let conn = &mut models::establish_connection();
         let filename_manuals = common::get_filename_manuals();
         for (file_name, _, manual) in &filename_manuals {
-            let _ = manual.save_to(conn, file_name);
+            let _ = manual.save_db(conn, file_name);
         }
 
-        let manuals = &Manual::from_conn(conn, "%01%");
+        let manuals = &Manual::from_db(conn, "%01%");
         if let Ok(manuals) = manuals {
             if let Some(manual) = &manuals.get(0) {
                 manual.cut_source_moves();
@@ -405,7 +405,7 @@ mod tests {
             }
         }
 
-        let manuals = &Manual::from_conn(conn, "%").unwrap();
+        let manuals = &Manual::from_db(conn, "%").unwrap();
         println!("manuals: {}", manuals.len());
     }
 }

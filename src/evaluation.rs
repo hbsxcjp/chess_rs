@@ -259,7 +259,7 @@ impl Zorbist {
         result
     }
 
-    pub fn from_conn(conn: &mut SqliteConnection) -> Result<Self, Error> {
+    pub fn from_db(conn: &mut SqliteConnection) -> Result<Self, Error> {
         let mut zorbist = Self::new();
         let eva_asp_zor: Vec<(EvaluationData, AspectData, ZorbistData)> = evaluation::table
             .inner_join(aspect::table.inner_join(zorbist::table))
@@ -285,7 +285,7 @@ impl Zorbist {
         Ok(zorbist)
     }
 
-    pub fn save_to(&self, conn: &mut SqliteConnection) -> Result<usize, Error> {
+    pub fn save_db(&self, conn: &mut SqliteConnection) -> Result<usize, Error> {
         for (key, lock, from_index, to_index, count) in self.get_data_values() {
             let zorbist_data = ZorbistData {
                 id: key as i64,
