@@ -3,6 +3,11 @@
 
 // use serde_derive::{Deserialize, Serialize};
 // use std::cell::RefCell;
+use crate::models::{AspectData, EvaluationData, ZorbistData};
+use crate::schema::{aspect, evaluation, zorbist};
+use diesel::prelude::*;
+use diesel::result::Error;
+use diesel::sqlite::SqliteConnection;
 use std::collections::HashMap;
 
 use crate::{bit_board, bit_constant, coord, piece};
@@ -14,20 +19,20 @@ pub struct Evaluation {
 
 // to_index->Evaluation
 #[derive(Debug)]
-pub struct IndexEvaluation {
+pub struct ToIndex {
     inner: HashMap<usize, Evaluation>,
 }
 
 // from_index->IndexEvaluation
 #[derive(Debug)]
-pub struct AspectEvaluation {
-    inner: HashMap<usize, IndexEvaluation>,
+pub struct Aspect {
+    inner: HashMap<usize, ToIndex>,
 }
 
 // #[derive(Debug)]
 #[derive(Debug)]
-pub struct ZorbistEvaluation {
-    inner: HashMap<u64, (u64, AspectEvaluation)>,
+pub struct Zorbist {
+    inner: HashMap<u64, (u64, Aspect)>,
 }
 
 // 后期根据需要扩展
@@ -45,7 +50,7 @@ impl Evaluation {
     }
 }
 
-impl IndexEvaluation {
+impl ToIndex {
     pub fn new() -> Self {
         Self {
             inner: HashMap::new(),
@@ -101,7 +106,7 @@ impl IndexEvaluation {
     }
 }
 
-impl AspectEvaluation {
+impl Aspect {
     pub fn new() -> Self {
         Self {
             inner: HashMap::new(),
@@ -110,24 +115,19 @@ impl AspectEvaluation {
 
     pub fn from(from_index: usize) -> Self {
         let mut aspect_evaluation = Self::new();
-        aspect_evaluation
-            .inner
-            .insert(from_index, IndexEvaluation::new());
+        aspect_evaluation.inner.insert(from_index, ToIndex::new());
 
         aspect_evaluation
     }
 
     pub fn from_values(from_index: usize, to_index: usize, count: usize) -> Self {
         let mut aspect_evaluation = Self::from(from_index);
-        aspect_evaluation.insert(
-            from_index,
-            IndexEvaluation::from(to_index, Evaluation::from(count)),
-        );
+        aspect_evaluation.insert(from_index, ToIndex::from(to_index, Evaluation::from(count)));
 
         aspect_evaluation
     }
 
-    pub fn insert(&mut self, from_index: usize, index_evaluation: IndexEvaluation) {
+    pub fn insert(&mut self, from_index: usize, index_evaluation: ToIndex) {
         if self.inner.contains_key(&from_index) {
             self.inner
                 .get_mut(&from_index)
@@ -164,21 +164,25 @@ impl AspectEvaluation {
     }
 }
 
-impl ZorbistEvaluation {
+impl Zorbist {
     pub fn new() -> Self {
         Self {
             inner: HashMap::new(),
         }
     }
 
-    pub fn from(key: u64, lock: u64, aspect_evaluation: AspectEvaluation) -> Self {
+    pub fn from(key: u64, lock: u64, aspect_evaluation: Aspect) -> Self {
         let mut zorbist_evaluation = Self::new();
         zorbist_evaluation.insert(key, lock, aspect_evaluation);
 
         zorbist_evaluation
     }
 
-    pub fn insert(&mut self, key: u64, lock: u64, aspect_evaluation: AspectEvaluation) {
+    pub fn len(&self) -> usize {
+        self.inner.len()
+    }
+
+    pub fn insert(&mut self, key: u64, lock: u64, aspect_evaluation: Aspect) {
         match self.get_mut_aspect_evaluation(key, lock) {
             Some(old_aspect_evaluation) => old_aspect_evaluation.append(aspect_evaluation),
             None => {
@@ -197,7 +201,7 @@ impl ZorbistEvaluation {
         &self,
         bit_board: &bit_board::BitBoard,
         color: piece::Color,
-    ) -> Option<&AspectEvaluation> {
+    ) -> Option<&Aspect> {
         let (key, lock) = bit_board.get_key_lock(color);
         let real_key = self.get_real_key(key, lock)?;
 
@@ -206,7 +210,7 @@ impl ZorbistEvaluation {
             .map(|(_, aspect_evaluation)| aspect_evaluation)
     }
 
-    fn get_mut_aspect_evaluation(&mut self, key: u64, lock: u64) -> Option<&mut AspectEvaluation> {
+    fn get_mut_aspect_evaluation(&mut self, key: u64, lock: u64) -> Option<&mut Aspect> {
         let real_key = self.get_real_key(key, lock)?;
 
         self.inner
@@ -255,8 +259,44 @@ impl ZorbistEvaluation {
         result
     }
 
-    pub fn len(&self) -> usize {
-        self.inner.len()
+    pub fn from_conn(conn: &mut SqliteConnection) -> Result<Self, Error> {
+        let mut zorbist = Self::new();
+        let eva_asp_zor: Vec<(EvaluationData, AspectData, ZorbistData)> = evaluation::table
+            .inner_join(aspect::table.inner_join(zorbist::table))
+            .select((
+                EvaluationData::as_select(),
+                AspectData::as_select(),
+                ZorbistData::as_select(),
+            ))
+            .load::<(EvaluationData, AspectData, ZorbistData)>(conn)?;
+
+        for (eva, asp, zor) in eva_asp_zor {
+            zorbist.insert(
+                zor.id as u64,
+                zor.lock as u64,
+                Aspect::from_values(
+                    asp.from_index as usize,
+                    eva.to_index as usize,
+                    eva.count as usize,
+                ),
+            );
+        }
+
+        Ok(zorbist)
+    }
+
+    pub fn save_to(&self, conn: &mut SqliteConnection) -> Result<usize, Error> {
+        for (key, lock, from_index, to_index, count) in self.get_data_values() {
+            let zorbist_data = ZorbistData {
+                id: key as i64,
+                lock: lock as i64,
+            };
+            let _ = diesel::insert_into(zorbist::table)
+                .values(zorbist_data)
+                .execute(conn)?;
+        }
+
+        Ok(1)
     }
 
     pub fn to_string(&self) -> String {
@@ -308,4 +348,7 @@ mod tests {
         // let result = zorbist_eval.to_string();
         // std::fs::write(format!("tests/output/zobrist_eval.txt"), result).expect("Write Err.");
     }
+
+    #[test]
+    fn test_evaluation_db() {}
 }

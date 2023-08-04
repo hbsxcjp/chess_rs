@@ -2,10 +2,7 @@
 
 use crate::board;
 // use diesel;
-use crate::schema::aspect;
-use crate::schema::evaluation;
-use crate::schema::manual;
-use crate::schema::zorbist;
+use crate::schema::{aspect, evaluation, manual, zorbist};
 use diesel::prelude::*;
 use diesel::result::Error;
 use diesel::sqlite::SqliteConnection;
@@ -17,25 +14,26 @@ pub const MANUAL_FIELD_NUM: u32 = 18;
 #[derive(Insertable, Queryable, Selectable)]
 #[diesel(table_name = zorbist)]
 #[diesel(check_for_backend(diesel::sqlite::Sqlite))]
-pub struct Zorbist {
+pub struct ZorbistData {
     pub id: i64,
+    pub lock: i64,
 }
 
 #[derive(Queryable, Selectable, Identifiable, Associations, Debug, PartialEq)]
-#[diesel(belongs_to(Zorbist))]
+#[diesel(belongs_to(ZorbistData, foreign_key = zorbist_id))]
 #[diesel(table_name = aspect)]
 #[diesel(check_for_backend(diesel::sqlite::Sqlite))]
-pub struct Aspect {
+pub struct AspectData {
     pub id: i32,
     pub from_index: i32,
     pub zorbist_id: i64,
 }
 
 #[derive(Queryable, Selectable, Identifiable, Associations, Debug, PartialEq)]
-#[diesel(belongs_to(Aspect))]
+#[diesel(belongs_to(AspectData, foreign_key = aspect_id))]
 #[diesel(table_name = evaluation)]
 #[diesel(check_for_backend(diesel::sqlite::Sqlite))]
-pub struct Evaluation {
+pub struct EvaluationData {
     pub id: i32,
     pub to_index: i32,
     pub count: i32,

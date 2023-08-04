@@ -296,8 +296,8 @@ impl ManualMove {
         all_after_moves
     }
 
-    pub fn get_zorbist_evaluation(&self) -> evaluation::ZorbistEvaluation {
-        let mut zorbist_evaluation = evaluation::ZorbistEvaluation::new();
+    pub fn get_zorbist_evaluation(&self) -> evaluation::Zorbist {
+        let mut zorbist_evaluation = evaluation::Zorbist::new();
         let all_after_moves = self.get_all_after_moves();
         // println!("all_after_moves.len: {}", all_after_moves.len());
 

@@ -44,6 +44,7 @@ diesel::table! {
 diesel::table! {
     zorbist (id) {
         id -> BigInt,
+        lock -> BigInt,
     }
 }
 

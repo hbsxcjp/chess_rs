@@ -12,47 +12,6 @@ use encoding::{DecoderTrap, Encoding};
 use std::borrow::Borrow;
 use std::cell::RefCell;
 
-// pub type ManualInfoOld = BTreeMap<String, String>;
-
-// #[derive(Debug, TryFromPrimitive)]
-// #[repr(usize)]
-// pub enum InfoKey {
-//     Source,
-//     Title,
-//     Game,
-//     Date,
-//     Site,
-//     Black,
-//     RowCols,
-//     Red,
-//     EccoSn,
-//     EccoName,
-//     Win,
-//     Opening,
-//     Writer,
-//     Author,
-//     Atype,
-//     Version,
-//     FEN,
-//     MoveString,
-// }
-
-// impl InfoKey {
-//     pub fn to_string(&self) -> String {
-//         format!("{:?}", self)
-//     }
-// }
-
-// pub fn get_fen_old(info: &ManualInfoOld) -> &str {
-//     if let Some(value) = info.get(&InfoKey::FEN.to_string()) {
-//         if !value.is_empty() {
-//             return value.split_once(" ").unwrap().0;
-//         }
-//     }
-
-//     board::FEN
-// }
-
 pub fn get_fen(info: &models::ManualInfo) -> &str {
     if let Some(value) = &info.fen {
         if let Some((fen, _)) = value.split_once(" ") {
@@ -63,8 +22,8 @@ pub fn get_fen(info: &models::ManualInfo) -> &str {
     board::FEN
 }
 
-pub fn get_zorbist_evaluation_manuals(manuals: Vec<Manual>) -> evaluation::ZorbistEvaluation {
-    let mut zorbist_evaluation = evaluation::ZorbistEvaluation::new();
+pub fn get_zorbist_evaluation_manuals(manuals: Vec<Manual>) -> evaluation::Zorbist {
+    let mut zorbist_evaluation = evaluation::Zorbist::new();
     for manual in manuals {
         zorbist_evaluation.append(manual.manual_move.get_zorbist_evaluation());
     }
@@ -74,7 +33,6 @@ pub fn get_zorbist_evaluation_manuals(manuals: Vec<Manual>) -> evaluation::Zorbi
 
 #[derive(Debug)]
 pub struct Manual {
-    // old_info: RefCell<ManualInfoOld>,
     info: RefCell<models::ManualInfo>,
     manual_move: manual_move::ManualMove,
 }
@@ -87,20 +45,11 @@ impl PartialEq for Manual {
 
 impl Manual {
     pub fn new() -> Self {
-        Manual::from(
-            // ManualInfoOld::new(),
-            models::ManualInfo::new(),
-            manual_move::ManualMove::new(),
-        )
+        Manual::from(models::ManualInfo::new(), manual_move::ManualMove::new())
     }
 
-    pub fn from(
-        // info_old: ManualInfoOld,
-        info: models::ManualInfo,
-        manual_move: manual_move::ManualMove,
-    ) -> Self {
+    fn from(info: models::ManualInfo, manual_move: manual_move::ManualMove) -> Self {
         Manual {
-            // old_info: RefCell::new(info_old),
             info: RefCell::new(info),
             manual_move,
         }
@@ -114,22 +63,6 @@ impl Manual {
             _ => Self::from_string(file_name, record_type),
         }
     }
-
-    // pub fn from_info_old(info: ManualInfoOld) -> common::Result<Self> {
-    //     let fen = get_fen_old(&info);
-    //     let manual_move_str = info.get(&InfoKey::MoveString.to_string()).unwrap();
-    //     let manual_move = match manual_move_str.is_empty() {
-    //         true => {
-    //             let rowcols_str = info.get(&InfoKey::RowCols.to_string()).unwrap();
-    //             manual_move::ManualMove::from_rowcols(fen, rowcols_str)
-    //         }
-    //         false => {
-    //             manual_move::ManualMove::from_string(fen, manual_move_str, coord::RecordType::PgnZh)
-    //         }
-    //     }?;
-
-    //     Ok(Manual::from(info, models::ManualInfo::new(), manual_move))
-    // }
 
     pub fn from_info(info: models::ManualInfo) -> common::Result<Self> {
         let fen = get_fen(&info);
@@ -174,10 +107,6 @@ impl Manual {
         self.info.borrow().save_to(conn)
     }
 
-    // pub fn get_info(&self) -> ManualInfoOld {
-    //     self.old_info.borrow().clone()
-    // }
-
     pub fn write(&self, file_name: &str) -> Result<(), std::io::ErrorKind> {
         let record_type =
             coord::RecordType::get_record_type(file_name).map_err(|_| std::io::ErrorKind::Other)?;
@@ -192,7 +121,6 @@ impl Manual {
     }
 
     fn from_xqf(file_name: &str) -> common::Result<Self> {
-        // let mut info_old = ManualInfoOld::new();
         let mut info = models::ManualInfo::new();
         let mut manual_move = manual_move::ManualMove::new();
         if let Ok(input) = std::fs::read(file_name) {
@@ -323,26 +251,6 @@ impl Manual {
                     .into()
             };
 
-            // for (key, value) in [
-            //     (InfoKey::FEN, format!("{fen} r - - 0 1")), // 可能存在不是红棋先走的情况？
-            //     (InfoKey::Version, version.to_string()),
-            //     (InfoKey::Win, String::from(result[headplayresult as usize])),
-            //     (
-            //         InfoKey::Atype,
-            //         String::from(typestr[headcodea_h[0] as usize]),
-            //     ),
-            //     (InfoKey::Title, bytes_to_string(titlea)),
-            //     (InfoKey::Game, bytes_to_string(event)),
-            //     (InfoKey::Date, bytes_to_string(date)),
-            //     (InfoKey::Site, bytes_to_string(site)),
-            //     (InfoKey::Red, bytes_to_string(red)),
-            //     (InfoKey::Black, bytes_to_string(black)),
-            //     (InfoKey::Opening, bytes_to_string(opening)),
-            //     (InfoKey::Writer, bytes_to_string(rmkwriter)),
-            //     (InfoKey::Author, bytes_to_string(author)),
-            // ] {
-            //     info_old.insert(key.to_string(), value);
-            // }
             info.fen = Some(format!("{fen} r - - 0 1")); // 可能存在不是红棋先走的情况？
             info.version = Some(version.to_string());
             info.win = Some(String::from(result[headplayresult as usize]));
@@ -365,7 +273,7 @@ impl Manual {
         Ok(Manual::from(info, manual_move))
     }
 
-    pub fn from_bin(file_name: &str) -> common::Result<Self> {
+    fn from_bin(file_name: &str) -> common::Result<Self> {
         if let Ok(input) = std::fs::read(file_name) {
             let mut input = input.borrow();
             let mut key_values = vec![];
@@ -393,8 +301,6 @@ impl Manual {
         let mut result = Vec::new();
         let len = self.info.borrow().get_key_values().len();
         common::write_be_u32(&mut result, len as u32);
-        // common::write_be_u32(&mut result, self.old_info.borrow().len() as u32);
-        // for (key, value) in self.old_info.borrow().iter() {
         for (key, value) in self.info.borrow().get_key_values() {
             common::write_string(&mut result, key);
             common::write_string(&mut result, value);
@@ -404,25 +310,21 @@ impl Manual {
         result
     }
 
-    pub fn from_string(file_name: &str, record_type: coord::RecordType) -> common::Result<Self> {
+    fn from_string(file_name: &str, record_type: coord::RecordType) -> common::Result<Self> {
         let manual_string =
             std::fs::read_to_string(&file_name).map_err(|_| common::ParseError::StringParse)?;
         let (info_str, manual_move_str) = manual_string
             .split_once("\n\n")
             .ok_or(common::ParseError::StringParse)?;
 
-        // let mut info_old = ManualInfoOld::new();
         let mut key_values = vec![];
         let info_re = regex::Regex::new(r"\[(\S+): ([\s\S]*?)\]").unwrap();
         for caps in info_re.captures_iter(info_str) {
             let key = caps.at(1).unwrap().to_string();
             let value = caps.at(2).unwrap().to_string();
             key_values.push((key, value));
-
-            // info_old.insert(key, value);
         }
 
-        // let fen = get_fen_old(&info_old);
         let info = models::ManualInfo::from(key_values);
         let fen = get_fen(&info);
         // if record_type == coord::RecordType::PgnZh {
@@ -433,15 +335,8 @@ impl Manual {
         Ok(Manual::from(info, manual_move))
     }
 
-    // fn set_info(&self, info_key: InfoKey, value: String) {
-    //     self.old_info
-    //         .borrow_mut()
-    //         .insert(info_key.to_string(), value);
-    // }
-
     pub fn to_string(&self, record_type: coord::RecordType) -> String {
         let mut info_str = String::new();
-        // for (key, value) in self.old_info.borrow().iter() {
         for (key, value) in self.info.borrow().get_key_values() {
             info_str.push_str(&format!("[{key}: {value}]\n"));
         }
