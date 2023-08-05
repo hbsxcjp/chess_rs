@@ -286,7 +286,7 @@ impl Zorbist {
     }
 
     pub fn save_db(&self, conn: &mut SqliteConnection) -> Result<usize, Error> {
-        for (key, lock, from_index, to_index, count) in self.get_data_values() {
+        for (key, lock, _from_index, _to_index, _count) in self.get_data_values() {
             let zorbist_data = ZorbistData {
                 id: key as i64,
                 lock: lock as i64,
@@ -321,6 +321,7 @@ mod tests {
     use crate::manual;
 
     #[test]
+    #[ignore = "从文件提取zorbist。"]
     fn test_evaluation() {
         let filename_manuals = crate::common::get_filename_manuals();
         let manuals = filename_manuals
@@ -350,5 +351,6 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "从数据库提取zorbist。"]
     fn test_evaluation_db() {}
 }
