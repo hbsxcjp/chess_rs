@@ -1,4 +1,5 @@
 #![allow(dead_code)]
+#![allow(non_upper_case_globals)]
 
 use crate::amove;
 use crate::bit_board;
@@ -10,18 +11,19 @@ use crate::piece;
 use std::cmp::Ordering;
 use std::collections::HashMap;
 // use std::cell::RefCell;
-use std::rc::Rc;
+// use std::rc::Rc;
 // use std::rc::Weak;
 use num_enum::TryFromPrimitive;
+use std::rc::Rc;
 
 pub type Pieces = [piece::Piece; coord::SEATCOUNT];
 
 #[derive(TryFromPrimitive, PartialEq)]
 #[repr(usize)]
 pub enum MoveDir {
-    BACK,
-    PARALLEL,
-    FORWARD,
+    Back,
+    Parallel,
+    Forward,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -175,36 +177,20 @@ impl Board {
         bit_board::BitBoard::new(&self.pieces)
     }
 
-    pub fn do_move(&mut self, amove: &Rc<amove::Move>) {
-        // // 测试
-        // let old_board = self.clone();
-
+    pub fn do_move(&mut self, amove: &Rc<amove::Move>) -> piece::Piece {
         let (from_index, to_index) = amove.coordpair.from_to_index();
-        amove.set_to_piece(self.pieces[to_index]);
+        let to_piece = self.pieces[to_index];
         self.pieces[to_index] = self.pieces[from_index];
         self.pieces[from_index] = piece::Piece::None;
 
-        // // 测试
-        // let mut new_board = self.clone();
-        // new_board.undo_move(amove);
-        // assert_eq!(old_board, new_board);
-
-        // // 测试
-        // let mut old_bit_board = old_board.bit_board();
-        // let mut new_bit_board = new_board.bit_board();
-        // let kind = old_bit_board.do_move(from_index, to_index);
-        // assert_eq!(old_bit_board, new_bit_board);
-
-        // // 测试
-        // let _ = new_bit_board.undo_move(from_index, to_index, kind);
-        // assert_eq!(old_board.bit_board(), new_bit_board);
+        to_piece
     }
 
-    pub fn undo_move(&mut self, amove: &Rc<amove::Move>) {
+    pub fn undo_move(&mut self, amove: &Rc<amove::Move>, to_piece: piece::Piece) {
         let (from_index, to_index) = amove.coordpair.from_to_index();
 
         self.pieces[from_index] = self.pieces[to_index];
-        self.pieces[to_index] = amove.get_to_piece();
+        self.pieces[to_index] = to_piece;
     }
 
     pub fn to_move(&self, amove: &Rc<amove::Move>, contains_self: bool) -> Self {
@@ -293,7 +279,7 @@ impl Board {
         let color_is_bottom = color == get_bottom_color(&self.pieces);
         let mut index = 0;
         let move_dir = Self::get_move_dir(zh_chs[2]);
-        let abs_row_sub = (move_dir == MoveDir::FORWARD) == color_is_bottom;
+        let abs_row_sub = (move_dir == MoveDir::Forward) == color_is_bottom;
 
         let mut live_coords: Vec<Coord>;
         let mut kind = piece::kind_from_name(zh_chs[0]);
@@ -307,7 +293,7 @@ impl Board {
             );
 
             // 士、象同列时不分前后，以进、退区分棋子位置
-            if live_coords.len() == 2 && move_dir == MoveDir::FORWARD {
+            if live_coords.len() == 2 && move_dir == MoveDir::Forward {
                 index = 1;
             }
         } else {
@@ -330,7 +316,7 @@ impl Board {
         let col = Self::get_col(color, zh_chs[3]);
         let mut to_col = Coord::get_side_col(col, color_is_bottom);
         if piece::is_line_move(kind) {
-            if move_dir != MoveDir::PARALLEL {
+            if move_dir != MoveDir::Parallel {
                 to_col = from_coord.col;
                 if abs_row_sub {
                     to_row -= col + 1;
@@ -514,66 +500,13 @@ impl Board {
 
 #[cfg(test)]
 mod tests {
+    use crate::common;
+
     use super::*;
 
     #[test]
     fn test_board() {
-        let fen_piece_chars=[
-            (FEN,
-            "rnbakabnr__________c_____c_p_p_p_p_p__________________P_P_P_P_P_C_____C__________RNBAKABNR",
-        "車馬象士将士象馬車
-－－－－－－－－－
-－砲－－－－－砲－
-卒－卒－卒－卒－卒
-－－－－－－－－－
-－－－－－－－－－
-兵－兵－兵－兵－兵
-－炮－－－－－炮－
-－－－－－－－－－
-车马相仕帅仕相马车
-"),
-            ("5a3/4ak2r/6R2/8p/9/9/9/B4N2B/4K4/3c5",
-            "_____a_______ak__r______R__________p___________________________B____N__B____K_______c_____",
-        "－－－－－士－－－
-－－－－士将－－車
-－－－－－－车－－
-－－－－－－－－卒
-－－－－－－－－－
-－－－－－－－－－
-－－－－－－－－－
-相－－－－马－－相
-－－－－帅－－－－
-－－－砲－－－－－
-"),
-            ("2b1kab2/4a4/4c4/9/9/3R5/9/1C7/4r4/2BK2B2",
-            "__b_kab______a________c_________________________R_______________C___________r______BK__B__",
-        "－－象－将士象－－
-－－－－士－－－－
-－－－－砲－－－－
-－－－－－－－－－
-－－－－－－－－－
-－－－车－－－－－
-－－－－－－－－－
-－炮－－－－－－－
-－－－－車－－－－
-－－相帅－－相－－
-"),
-            ("4kab2/4a4/4b4/3N5/9/4N4/4n4/4B4/4A4/3AK1B2",
-            "____kab______a________b_______N__________________N________n________B________A_______AK_B__",
-        "－－－－将士象－－
-－－－－士－－－－
-－－－－象－－－－
-－－－马－－－－－
-－－－－－－－－－
-－－－－马－－－－
-－－－－馬－－－－
-－－－－相－－－－
-－－－－仕－－－－
-－－－仕帅－相－－
-"),
-        ];
-
-        for (fen, piece_chars, to_string) in fen_piece_chars {
+        for (fen, piece_chars, to_string) in common::FEN_PIECES_CHARS {
             assert_eq!(fen_to_piece_chars(fen), piece_chars);
             assert_eq!(piece_chars_to_fen(piece_chars), fen);
 

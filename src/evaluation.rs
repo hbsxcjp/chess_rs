@@ -113,18 +113,11 @@ impl Aspect {
         }
     }
 
-    pub fn from(from_index: usize) -> Self {
-        let mut aspect_evaluation = Self::new();
-        aspect_evaluation.inner.insert(from_index, ToIndex::new());
+    pub fn from(from_index: usize, to_index: ToIndex) -> Self {
+        let mut aspect = Self::new();
+        aspect.inner.insert(from_index, to_index);
 
-        aspect_evaluation
-    }
-
-    pub fn from_values(from_index: usize, to_index: usize, count: usize) -> Self {
-        let mut aspect_evaluation = Self::from(from_index);
-        aspect_evaluation.insert(from_index, ToIndex::from(to_index, Evaluation::from(count)));
-
-        aspect_evaluation
+        aspect
     }
 
     pub fn insert(&mut self, from_index: usize, index_evaluation: ToIndex) {
@@ -138,9 +131,9 @@ impl Aspect {
         }
     }
 
-    pub fn append(&mut self, other_aspect_evaluation: Self) {
-        for (from_index, index_evaluation) in other_aspect_evaluation.inner {
-            self.insert(from_index, index_evaluation);
+    pub fn append(&mut self, other: Self) {
+        for (from_index, to_index) in other.inner {
+            self.insert(from_index, to_index);
         }
     }
 
@@ -172,27 +165,27 @@ impl Zorbist {
     }
 
     pub fn from(key: u64, lock: u64, aspect_evaluation: Aspect) -> Self {
-        let mut zorbist_evaluation = Self::new();
-        zorbist_evaluation.insert(key, lock, aspect_evaluation);
+        let mut zorbist = Self::new();
+        zorbist.insert(key, lock, aspect_evaluation);
 
-        zorbist_evaluation
+        zorbist
     }
 
     pub fn len(&self) -> usize {
         self.inner.len()
     }
 
-    pub fn insert(&mut self, key: u64, lock: u64, aspect_evaluation: Aspect) {
-        match self.get_mut_aspect_evaluation(key, lock) {
-            Some(old_aspect_evaluation) => old_aspect_evaluation.append(aspect_evaluation),
+    pub fn insert(&mut self, id: u64, lock: u64, aspect: Aspect) {
+        match self.get_mut_aspect_evaluation(id, lock) {
+            Some(old_aspect) => old_aspect.append(aspect),
             None => {
-                self.inner.insert(key, (lock, aspect_evaluation));
+                self.inner.insert(id, (lock, aspect));
             }
         }
     }
 
-    pub fn append(&mut self, other_zorbist_evaluation: Self) {
-        for (key, (lock, aspect_evaluation)) in other_zorbist_evaluation.inner {
+    pub fn append(&mut self, other_zorbist: Self) {
+        for (key, (lock, aspect_evaluation)) in other_zorbist.inner {
             self.insert(key, lock, aspect_evaluation);
         }
     }
@@ -245,22 +238,7 @@ impl Zorbist {
         Some(real_key)
     }
 
-    pub fn get_data_values(&self) -> Vec<(u64, u64, usize, usize, usize)> {
-        let mut result = vec![];
-        for (key, lock_aspect_eval) in &self.inner {
-            let (lock, aspect_eval) = lock_aspect_eval;
-            for (from_index, index_eval) in aspect_eval.inner.iter() {
-                for (to_index, eval) in &index_eval.inner {
-                    result.push((*key, *lock, *from_index, *to_index, eval.count));
-                }
-            }
-        }
-
-        result
-    }
-
     pub fn from_db(conn: &mut SqliteConnection) -> Result<Self, Error> {
-        let mut zorbist = Self::new();
         let eva_asp_zor: Vec<(EvaluationData, AspectData, ZorbistData)> = evaluation::table
             .inner_join(aspect::table.inner_join(zorbist::table))
             .select((
@@ -270,14 +248,14 @@ impl Zorbist {
             ))
             .load::<(EvaluationData, AspectData, ZorbistData)>(conn)?;
 
+        let mut zorbist = Self::new();
         for (eva, asp, zor) in eva_asp_zor {
             zorbist.insert(
                 zor.id as u64,
                 zor.lock as u64,
-                Aspect::from_values(
+                Aspect::from(
                     asp.from_index as usize,
-                    eva.to_index as usize,
-                    eva.count as usize,
+                    ToIndex::from(eva.to_index as usize, Evaluation::from(eva.count as usize)),
                 ),
             );
         }
@@ -285,18 +263,48 @@ impl Zorbist {
         Ok(zorbist)
     }
 
-    pub fn save_db(&self, conn: &mut SqliteConnection) -> Result<usize, Error> {
-        for (key, lock, _from_index, _to_index, _count) in self.get_data_values() {
-            let zorbist_data = ZorbistData {
-                id: key as i64,
-                lock: lock as i64,
-            };
-            let _ = diesel::insert_into(zorbist::table)
-                .values(zorbist_data)
-                .execute(conn)?;
+    // 每次全新保存数据
+    pub fn save_db(&self, conn: &mut SqliteConnection) -> Result<(usize, usize, usize), Error> {
+        let mut zorbist_datas = vec![];
+        let mut aspect_datas = vec![];
+        let mut evaluation_datas = vec![];
+        let mut aspect_id = 0;
+        for (id, (lock, aspect)) in self.inner.iter() {
+            let id = *id as i64;
+            let lock = *lock as i64;
+            zorbist_datas.push(ZorbistData { id, lock });
+            for (from_index, to_index_eval) in aspect.inner.iter() {
+                let from_index = *from_index as i32;
+                aspect_id += 1;
+                aspect_datas.push(AspectData {
+                    id: aspect_id,
+                    from_index,
+                    zorbist_id: id,
+                });
+                for (to_index, eval) in to_index_eval.inner.iter() {
+                    let to_index = *to_index as i32;
+                    evaluation_datas.push(EvaluationData {
+                        to_index,
+                        count: eval.count as i32,
+                        aspect_id,
+                    });
+                }
+            }
         }
 
-        Ok(1)
+        // Sqlite3 "PRAGMA foreign_keys = ON"
+        let _ = diesel::delete(zorbist::table).execute(conn)?;
+        let zor_count = diesel::insert_into(zorbist::table)
+            .values(zorbist_datas)
+            .execute(conn)?;
+        let asp_count = diesel::insert_into(aspect::table)
+            .values(aspect_datas)
+            .execute(conn)?;
+        let eva_count = diesel::insert_into(evaluation::table)
+            .values(evaluation_datas)
+            .execute(conn)?;
+
+        Ok((zor_count, asp_count, eva_count))
     }
 
     pub fn to_string(&self) -> String {
@@ -319,26 +327,30 @@ impl Zorbist {
 mod tests {
     // use super::*;
     use crate::manual;
+    use crate::models;
 
     #[test]
-    #[ignore = "从文件提取zorbist。"]
+    // #[ignore = "从文件提取zorbist后存入数据库。"]
     fn test_evaluation() {
         let filename_manuals = crate::common::get_filename_manuals();
         let manuals = filename_manuals
             .into_iter()
             .map(|(_, _, manual)| manual)
             .collect::<Vec<manual::Manual>>();
-        let zorbist_evaluation = manual::get_zorbist_evaluation_manuals(manuals);
+        let zorbist = manual::get_zorbist_manuals(manuals);
 
         // let mut conn = database::get_connection();
-        // let zorbist_evaluation = database::get_zorbist_evaluation(&mut conn);
-        // println!("zorbist: {}", zorbist_evaluation.len());
+        // let zorbist = database::get_zorbist(&mut conn);
+        // println!("zorbist: {}", zorbist.len());
+        let mut conn = models::get_conn(&models::get_pool());
+        let result = zorbist.save_db(&mut conn).expect("Save Err.");
+        println!("evaluation zor_asp_eva: {:?}", result);
 
-        let result = zorbist_evaluation.to_string();
-        std::fs::write(format!("tests/output/zobrist_evaluation.txt"), result).expect("Write Err.");
+        let result = zorbist.to_string();
+        std::fs::write(format!("tests/output/zobrist_file.txt"), result).expect("Write Err.");
 
         // let json_file_name = "tests/output/serde_json.txt";
-        // let result = serde_json::to_string(&zorbist_evaluation).unwrap();
+        // let result = serde_json::to_string(&zorbist).unwrap();
         // std::fs::write(json_file_name, result).expect("Write Err.");
 
         // serde_json

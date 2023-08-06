@@ -1,7 +1,12 @@
 -- Your SQL goes here
 
+CREATE TABLE zorbist (
+    id BIGINT PRIMARY KEY NOT NULL,
+    lock BIGINT NOT NULL
+);
+
 CREATE TABLE aspect (
-    id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, 
+    id INTEGER PRIMARY KEY NOT NULL, 
     from_index INTEGER NOT NULL, 
 
     zorbist_id BIGINT NOT NULL, 
@@ -37,9 +42,4 @@ CREATE TABLE manual (
     version TEXT, 
     fen TEXT, 
     movestring TEXT
-);
-
-CREATE TABLE zorbist (
-    id BIGINT PRIMARY KEY NOT NULL,
-    lock BIGINT NOT NULL
 );

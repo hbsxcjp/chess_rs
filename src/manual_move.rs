@@ -1,18 +1,18 @@
 #![allow(dead_code)]
 
+use crate::board;
 use crate::coord::CoordPair;
 use crate::evaluation;
 use crate::{amove, common, coord};
 use encoding::all::GBK;
 use encoding::{DecoderTrap, Encoding};
 use std::collections::VecDeque;
+use std::rc::Rc;
 // use crate::bit_constant;
 // use std::borrow::Borrow;
-use crate::board;
 // use crate::utility;
 // use crate::manual;
 // use std::cell::RefCell;
-use std::rc::Rc;
 // use std::rc::Weak;
 // use regex;
 
@@ -275,18 +275,23 @@ impl ManualMove {
             }
         }
 
-        Ok(ManualMove { board, root_move })
+        Ok(ManualMove {
+            board,
+            root_move: root_move,
+        })
     }
 
     fn get_all_after_moves(&self) -> Vec<Rc<amove::Move>> {
         fn enqueue_after(move_deque: &mut VecDeque<Rc<amove::Move>>, amove: &Rc<amove::Move>) {
-            for bmove in amove.after() {
-                move_deque.push_back(bmove.clone());
+            if let Some(after) = amove.after() {
+                for bmove in after {
+                    move_deque.push_back(bmove);
+                }
             }
         }
 
-        let mut all_after_moves: Vec<Rc<amove::Move>> = Vec::new();
-        let mut move_deque: VecDeque<Rc<amove::Move>> = VecDeque::new();
+        let mut all_after_moves = Vec::new();
+        let mut move_deque = VecDeque::new();
         enqueue_after(&mut move_deque, &self.root_move);
         while let Some(amove) = move_deque.pop_front() {
             enqueue_after(&mut move_deque, &amove);
@@ -296,25 +301,23 @@ impl ManualMove {
         all_after_moves
     }
 
-    pub fn get_zorbist_evaluation(&self) -> evaluation::Zorbist {
-        let mut zorbist_evaluation = evaluation::Zorbist::new();
-        let all_after_moves = self.get_all_after_moves();
-        // println!("all_after_moves.len: {}", all_after_moves.len());
-
-        for amove in all_after_moves {
+    pub fn get_zorbist(&self) -> evaluation::Zorbist {
+        let mut zorbist = evaluation::Zorbist::new();
+        for amove in self.get_all_after_moves() {
             let mut bit_board = self.board.to_move(&amove, false).bit_board();
-            zorbist_evaluation.append(bit_board.get_zorbist_evaluation_amove(&amove));
+            zorbist.append(bit_board.get_zorbist_amove(&amove));
         }
 
-        zorbist_evaluation
+        zorbist
     }
 
     pub fn to_rowcols(&self) -> String {
         let mut reslut = String::new();
         let mut amove = self.root_move.clone();
-        while amove.after_len() > 0 {
-            amove = amove.after().first().unwrap().clone();
-            reslut.push_str(&amove.coordpair.to_string(coord::RecordType::PgnRc));
+        while let Some(after) = amove.after() {
+            let bmove = after.first().unwrap();
+            reslut.push_str(&bmove.coordpair.to_string(coord::RecordType::PgnRc));
+            amove = bmove.clone();
         }
 
         reslut

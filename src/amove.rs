@@ -1,21 +1,23 @@
 #![allow(dead_code)]
 
+use crate::board;
+use crate::coord;
+use std::cell::RefCell;
+use std::rc::Rc;
+use std::rc::Weak;
 // use serde_derive::Deserialize;
 // use serde_derive::Serialize;
-
-use crate::board;
+// use crate::piece;
+// use std::arch::x86_64::_CMP_FALSE_OQ;
+// use std::borrow::BorrowMut;
+// use std::sync::{Rc, RwLock, Weak};
+// use crate::coord::CoordPair;
+// use std::borrow::BorrowMut;
 // use crate::piece;
 // use crate::bit_constant;
 // use std::borrow::Borrow;
 // use std::borrow::Borrow;
 // use crate::common;
-use crate::coord;
-use crate::piece;
-// use crate::coord::CoordPair;
-// use std::borrow::BorrowMut;
-use std::cell::RefCell;
-use std::rc::Rc;
-use std::rc::Weak;
 
 #[derive(Debug)] //, Serialize, Deserialize
 pub struct Move {
@@ -24,8 +26,6 @@ pub struct Move {
 
     pub coordpair: coord::CoordPair,
     remark: RefCell<Option<String>>,
-
-    to_piece: RefCell<piece::Piece>,
 }
 
 impl Move {
@@ -33,11 +33,8 @@ impl Move {
         Rc::new(Move {
             before: None,
             after: RefCell::new(None),
-
             coordpair: coord::CoordPair::new(),
             remark: RefCell::new(None),
-
-            to_piece: RefCell::new(piece::Piece::None),
         })
     }
 
@@ -45,60 +42,60 @@ impl Move {
         self.before.is_none()
     }
 
-    pub fn before(&self) -> Option<Rc<Self>> {
-        match &self.before {
-            None => None,
-            Some(before) => Some(before.upgrade().unwrap()),
+    pub fn after_len(&self) -> usize {
+        match &*self.after.borrow() {
+            Some(after) => after.len(),
+            None => 0,
         }
     }
 
-    pub fn after_len(&self) -> usize {
-        self.after.borrow().as_ref().unwrap_or(&vec![]).len()
-    }
-
-    pub fn after(&self) -> Vec<Rc<Self>> {
-        self.after.borrow().clone().unwrap_or(vec![])
+    pub fn after(&self) -> Option<Vec<Rc<Self>>> {
+        match &*self.after.borrow() {
+            Some(after) => Some(after.clone()),
+            None => None,
+        }
     }
 
     pub fn remark(&self) -> String {
-        self.remark.borrow().clone().unwrap_or(String::new())
-    }
-
-    pub fn set_remark(&self, remark: String) {
-        if !remark.is_empty() {
-            *self.remark.borrow_mut() = Some(remark);
+        match &*self.remark.borrow() {
+            Some(remark) => remark.clone(),
+            None => String::new(),
         }
     }
 
-    pub fn append(self: &Rc<Self>, coordpair: coord::CoordPair, remark: String) -> Rc<Self> {
+    fn converted_remark(remark: String) -> Option<String> {
+        match remark.is_empty() {
+            false => Some(remark),
+            true => None,
+        }
+    }
+
+    pub fn set_remark(&self, remark: String) {
+        *self.remark.borrow_mut() = Self::converted_remark(remark);
+    }
+
+    pub fn append(self: &Rc<Move>, coordpair: coord::CoordPair, remark: String) -> Rc<Self> {
         let amove = Rc::new(Self {
             before: Some(Rc::downgrade(self)),
             after: RefCell::new(None),
 
             coordpair,
-            remark: RefCell::new(if remark.is_empty() {
-                None
-            } else {
-                Some(remark)
-            }),
-
-            to_piece: RefCell::new(piece::Piece::None),
+            remark: RefCell::new(Self::converted_remark(remark)),
         });
 
         self.after
             .borrow_mut()
-            .get_or_insert(Vec::new())
+            .get_or_insert(vec![])
             .push(amove.clone());
 
         amove
     }
 
-    pub fn get_to_piece(&self) -> piece::Piece {
-        *self.to_piece.borrow()
-    }
-
-    pub fn set_to_piece(&self, piece: piece::Piece) {
-        *self.to_piece.borrow_mut() = piece;
+    pub fn before(&self) -> Option<Rc<Self>> {
+        match &self.before {
+            Some(before) => Some(before.upgrade().unwrap()),
+            None => None,
+        }
     }
 
     pub fn before_moves(self: &Rc<Self>, contains_self: bool) -> Vec<Rc<Self>> {
@@ -138,10 +135,10 @@ impl Move {
             }
         };
 
-        let mut remark = self.remark();
-        if !remark.is_empty() {
-            remark = format!("{{{}}}", remark);
-        }
+        let remark = match &*self.remark.borrow() {
+            Some(remark) => format!("{{{}}}", remark),
+            None => String::new(),
+        };
 
         let num = self.after_len();
         let after_num = if num > 0 {
@@ -166,8 +163,8 @@ mod tests {
         let to_coord = coord::Coord::from(0, 2).unwrap();
         let coordpair = coord::CoordPair::from(from_coord, to_coord);
         let remark = String::from("Hello, move.");
-        let amove = root_move.append(coordpair, remark);
         let board = board::Board::new();
+        let amove = root_move.append(coordpair, remark);
 
         assert_eq!(
             "(0,0)(0,2){Hello, move.}\n",

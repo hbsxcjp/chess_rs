@@ -1,5 +1,4 @@
-// use lib;
-
-// use lib::coord;
-// use lib::manual;
+// use chess::common;
+// use chess::manual::Manual;
+// use chess::models;
 

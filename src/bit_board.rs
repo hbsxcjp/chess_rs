@@ -1,8 +1,6 @@
 #![allow(dead_code)]
 #![allow(unused_imports)]
 
-use std::rc::Rc;
-
 use crate::amove;
 use crate::bit_constant;
 use crate::board;
@@ -13,6 +11,7 @@ use crate::evaluation;
 use crate::manual;
 use crate::manual_move;
 use crate::piece::{self, COLORCOUNT, KINDCOUNT};
+use std::rc::Rc;
 
 type GetEvaluation =
     fn(&BitBoard, from_to_index: (usize, usize), eat_kind: piece::Kind) -> evaluation::Evaluation;
@@ -266,7 +265,7 @@ impl BitBoard {
     }
 
     // 执行某一着后回退（保持原局面不变）
-    fn get_evaluation_by_do_move_undo(
+    fn get_eval_by_do_move_undo(
         &mut self,
         from_to_index: (usize, usize),
         get_evaluation: GetEvaluation,
@@ -280,41 +279,36 @@ impl BitBoard {
         Some(evaluation)
     }
 
-    fn get_aspect_evaluation_index(&mut self, from_index: usize) -> evaluation::Aspect {
-        let mut aspect_evaluation = evaluation::Aspect::from(from_index);
+    fn get_aspect_index(&mut self, from_index: usize) -> evaluation::Aspect {
+        let mut aspect = evaluation::Aspect::from(from_index, evaluation::ToIndex::new());
         for to_index in bit_constant::get_indexs_from_bitatom(self.get_move_from_index(from_index))
         {
-            if let Some(evaluation) = self.get_evaluation_by_do_move_undo(
-                (from_index, to_index),
-                Self::get_evaluation_is_killed,
-            ) {
-                aspect_evaluation
-                    .insert(from_index, evaluation::ToIndex::from(to_index, evaluation));
+            if let Some(evaluation) = self
+                .get_eval_by_do_move_undo((from_index, to_index), Self::get_evaluation_is_killed)
+            {
+                aspect.insert(from_index, evaluation::ToIndex::from(to_index, evaluation));
             }
         }
 
-        aspect_evaluation
+        aspect
     }
 
-    fn get_aspect_evaluation_bitatom(
-        &mut self,
-        bit_atom: bit_constant::BitAtom,
-    ) -> evaluation::Aspect {
-        let mut aspect_evaluation = evaluation::Aspect::new();
+    fn get_aspect_bitatom(&mut self, bit_atom: bit_constant::BitAtom) -> evaluation::Aspect {
+        let mut aspect = evaluation::Aspect::new();
         for from_index in bit_constant::get_indexs_from_bitatom(bit_atom) {
-            aspect_evaluation.append(self.get_aspect_evaluation_index(from_index));
+            aspect.append(self.get_aspect_index(from_index));
         }
 
-        aspect_evaluation
+        aspect
     }
 
     // kind == piece::Kind::NoKind，取全部种类棋子
-    fn get_aspect_evaluation_color_kind(
+    fn get_aspect_color_kind(
         &mut self,
         color: piece::Color,
         kind: piece::Kind,
     ) -> evaluation::Aspect {
-        self.get_aspect_evaluation_bitatom(match kind {
+        self.get_aspect_bitatom(match kind {
             piece::Kind::NoKind => self.color_pieces(color),
             _ => self.bit_pieces[color as usize][kind as usize],
         })
@@ -328,48 +322,47 @@ impl BitBoard {
         self.lock ^ bit_constant::COLORZOBRISTLOCK[color as usize]
     }
 
-    fn get_zorbist_evaluation(
-        &self,
-        color: piece::Color,
-        aspect_evaluation: evaluation::Aspect,
-    ) -> evaluation::Zorbist {
-        evaluation::Zorbist::from(self.get_key(color), self.get_lock(color), aspect_evaluation)
+    fn get_zorbist(&self, color: piece::Color, aspect: evaluation::Aspect) -> evaluation::Zorbist {
+        evaluation::Zorbist::from(self.get_key(color), self.get_lock(color), aspect)
     }
 
-    pub fn get_zorbist_evaluation_color(&mut self, color: piece::Color) -> evaluation::Zorbist {
-        let aspect_evaluation = self.get_aspect_evaluation_color_kind(color, piece::Kind::NoKind);
-        self.get_zorbist_evaluation(color, aspect_evaluation)
+    pub fn get_zorbist_color(&mut self, color: piece::Color) -> evaluation::Zorbist {
+        let aspect = self.get_aspect_color_kind(color, piece::Kind::NoKind);
+        self.get_zorbist(color, aspect)
     }
 
-    pub fn get_zorbist_evaluation_amove(&mut self, amove: &Rc<amove::Move>) -> evaluation::Zorbist {
+    pub fn get_zorbist_amove(&mut self, amove: &Rc<amove::Move>) -> evaluation::Zorbist {
         let (from_index, to_index) = amove.coordpair.from_to_index();
         let color = self.get_color(from_index).unwrap();
-        let mut aspect_evaluation = evaluation::Aspect::new();
-        if let Some(evaluation) = self
-            .get_evaluation_by_do_move_undo((from_index, to_index), Self::get_evaluation_is_killed)
+        let mut aspect = evaluation::Aspect::new();
+        if let Some(evaluation) =
+            self.get_eval_by_do_move_undo((from_index, to_index), Self::get_evaluation_is_killed)
         {
-            aspect_evaluation.insert(from_index, evaluation::ToIndex::from(to_index, evaluation));
+            aspect.insert(from_index, evaluation::ToIndex::from(to_index, evaluation));
         }
 
-        self.get_zorbist_evaluation(color, aspect_evaluation)
+        self.get_zorbist(color, aspect)
     }
 
-    pub fn get_zorbist_evaluation_rowcols(&mut self, rowcols: String) -> evaluation::Zorbist {
-        let mut zorbist_evaluation = evaluation::Zorbist::new();
+    pub fn get_zorbist_rowcols(&mut self, rowcols: String) -> evaluation::Zorbist {
+        let mut zorbist = evaluation::Zorbist::new();
         let mut color = piece::Color::Red;
         for coordpair in manual_move::ManualMove::get_coordpairs_from_rowcols(&rowcols).unwrap() {
             let (from_index, to_index) = coordpair.from_to_index();
             let key = self.get_key(color);
             let lock = self.get_lock(color);
             if self.do_move(from_index, to_index).is_some() {
-                let aspect_evaluation = evaluation::Aspect::from_values(from_index, to_index, 1);
-                zorbist_evaluation.insert(key, lock, aspect_evaluation);
+                let aspect = evaluation::Aspect::from(
+                    from_index,
+                    evaluation::ToIndex::from(to_index, evaluation::Evaluation::from(1)),
+                );
+                zorbist.insert(key, lock, aspect);
             }
 
             color = piece::other_color(color);
         }
 
-        zorbist_evaluation
+        zorbist
     }
 
     pub fn to_string(&mut self) -> String {
@@ -450,18 +443,18 @@ mod tests {
             assert_eq!(board_string, result);
 
             // // 可变借用
-            fn to_aspect_evaluation_string(bit_board: &mut BitBoard) -> String {
-                let mut result = format!("aspect_evaluation_string:\n");
+            fn to_aspect_string(bit_board: &mut BitBoard) -> String {
+                let mut result = format!("aspect_string:\n");
                 for color in [piece::Color::Red, piece::Color::Black] {
-                    let zorbist_evaluation = bit_board.get_zorbist_evaluation_color(color);
-                    result.push_str(&zorbist_evaluation.to_string());
+                    let zorbist = bit_board.get_zorbist_color(color);
+                    result.push_str(&zorbist.to_string());
                 }
 
                 result
             }
 
             result.push('\n');
-            result.push_str(&to_aspect_evaluation_string(&mut bit_board));
+            result.push_str(&to_aspect_string(&mut bit_board));
 
             let name = fen.split_at(3).0;
             std::fs::write(format!("tests/output/bit_board_{name}.txt"), result)

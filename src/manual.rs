@@ -5,12 +5,13 @@ use crate::coord::{self, COLCOUNT, ROWCOUNT, SEATCOUNT};
 use crate::evaluation;
 use crate::manual_move;
 use crate::{board, models};
+// use diesel::prelude::*;
 use diesel::result::Error;
 use diesel::sqlite::SqliteConnection;
 use encoding::all::GBK;
 use encoding::{DecoderTrap, Encoding};
 use std::borrow::Borrow;
-use std::cell::RefCell;
+// use std::cell::RefCell;
 
 pub fn get_fen(info: &models::ManualInfo) -> &str {
     if let Some(value) = &info.fen {
@@ -22,18 +23,18 @@ pub fn get_fen(info: &models::ManualInfo) -> &str {
     board::FEN
 }
 
-pub fn get_zorbist_evaluation_manuals(manuals: Vec<Manual>) -> evaluation::Zorbist {
-    let mut zorbist_evaluation = evaluation::Zorbist::new();
+pub fn get_zorbist_manuals(manuals: Vec<Manual>) -> evaluation::Zorbist {
+    let mut zorbist = evaluation::Zorbist::new();
     for manual in manuals {
-        zorbist_evaluation.append(manual.manual_move.get_zorbist_evaluation());
+        zorbist.append(manual.manual_move.get_zorbist());
     }
 
-    zorbist_evaluation
+    zorbist
 }
 
 #[derive(Debug)]
 pub struct Manual {
-    info: RefCell<models::ManualInfo>,
+    info: models::ManualInfo,
     manual_move: manual_move::ManualMove,
 }
 
@@ -49,10 +50,7 @@ impl Manual {
     }
 
     fn from(info: models::ManualInfo, manual_move: manual_move::ManualMove) -> Self {
-        Manual {
-            info: RefCell::new(info),
-            manual_move,
-        }
+        Manual { info, manual_move }
     }
 
     pub fn from_filename(file_name: &str) -> common::Result<Self> {
@@ -89,21 +87,19 @@ impl Manual {
         Ok(result)
     }
 
-    pub fn set_source_moves(&self, source: &str) {
-        self.info.borrow_mut().source = Some(source.to_string());
-        self.info.borrow_mut().rowcols = Some(self.manual_move.to_rowcols());
-        self.info.borrow_mut().movestring =
-            Some(self.manual_move.to_string(coord::RecordType::Txt));
+    pub fn set_source_moves(&mut self, source: &str) {
+        self.info.source = Some(source.to_string());
+        self.info.rowcols = Some(self.manual_move.to_rowcols());
+        self.info.movestring = Some(self.manual_move.to_string(coord::RecordType::Txt));
     }
 
-    pub fn cut_source_moves(&self) {
-        self.info.borrow_mut().source = None;
-        self.info.borrow_mut().rowcols = None;
-        self.info.borrow_mut().movestring = None;
+    pub fn cut_source_moves(&mut self) {
+        self.info.source = None;
+        self.info.rowcols = None;
+        self.info.movestring = None;
     }
 
-    pub fn save_db(&self, conn: &mut SqliteConnection, source: &str) -> Result<usize, Error> {
-        self.set_source_moves(source);
+    pub fn save_db(&self, conn: &mut models::SqlitePooledConnection) -> Result<usize, Error> {
         self.info.borrow().save_db(conn)
     }
 
@@ -115,7 +111,7 @@ impl Manual {
             coord::RecordType::Bin => {
                 std::fs::write(&file_name, self.get_bytes()).map_err(|_| std::io::ErrorKind::Other)
             }
-            _ => std::fs::write(&file_name, self.to_string(record_type))
+            _ => std::fs::write(&file_name, self.to_string_type(record_type))
                 .map_err(|_| std::io::ErrorKind::Other),
         }
     }
@@ -299,9 +295,9 @@ impl Manual {
 
     pub fn get_bytes(&self) -> Vec<u8> {
         let mut result = Vec::new();
-        let len = self.info.borrow().get_key_values().len();
-        common::write_be_u32(&mut result, len as u32);
-        for (key, value) in self.info.borrow().get_key_values() {
+        let key_values = self.info.borrow().get_key_values();
+        common::write_be_u32(&mut result, key_values.len() as u32);
+        for (key, value) in key_values {
             common::write_string(&mut result, key);
             common::write_string(&mut result, value);
         }
@@ -335,13 +331,17 @@ impl Manual {
         Ok(Manual::from(info, manual_move))
     }
 
-    pub fn to_string(&self, record_type: coord::RecordType) -> String {
+    fn to_string_type(&self, record_type: coord::RecordType) -> String {
         let mut info_str = String::new();
         for (key, value) in self.info.borrow().get_key_values() {
             info_str.push_str(&format!("[{key}: {value}]\n"));
         }
 
         format!("{}\n{}", info_str, self.manual_move.to_string(record_type))
+    }
+
+    pub fn to_string(&self) -> String {
+        self.to_string_type(coord::RecordType::Txt)
     }
 }
 
@@ -353,7 +353,7 @@ mod tests {
     fn test_manual() {
         let manual = Manual::new();
         assert_eq!("[title: 未命名]\n[game: 人机对战]\n[fen: rnbakabnr/9/1c5c1/p1p1p1p1p/9/9/P1P1P1P1P/1C5C1/9/RNBAKABNR r - - 0 1]\n\n\n", 
-            manual.to_string(coord::RecordType::Txt));
+            manual.to_string());
 
         fn get_file_path(file_name: &str, record_type: coord::RecordType) -> String {
             format!("tests/output/{}.{}", file_name, record_type.ext_name())
@@ -361,7 +361,7 @@ mod tests {
 
         let filename_manuals = common::get_filename_manuals();
         for (file_name, manual_string, manual) in filename_manuals {
-            assert_eq!(manual_string, manual.to_string(coord::RecordType::Txt));
+            assert_eq!(manual_string, manual.to_string());
 
             // 输出内容以备查看
             for record_type in [
@@ -377,35 +377,45 @@ mod tests {
                 }
 
                 let manual = Manual::from_filename(&file_path).unwrap();
-                assert_eq!(
-                    manual_string,
-                    manual.to_string(coord::RecordType::Txt),
-                    "file_path: {file_path}"
-                );
+                assert_eq!(manual_string, manual.to_string(), "file_path: {file_path}");
             }
         }
     }
 
     #[test]
+    #[ignore = "从文件提取manual后存入数据库。"]
     fn test_manual_db() {
-        let conn = &mut models::establish_connection();
-        let filename_manuals = common::get_filename_manuals();
-        for (file_name, _, manual) in &filename_manuals {
-            let _ = manual.save_db(conn, file_name);
-        }
+        let mut conn = models::get_conn(&models::get_pool());
 
-        let manuals = &Manual::from_db(conn, "%01%");
-        if let Ok(manuals) = manuals {
-            if let Some(manual) = &manuals.get(0) {
-                manual.cut_source_moves();
-                assert_eq!(
-                    filename_manuals[0].1,
-                    manual.to_string(coord::RecordType::Txt)
-                );
+        use diesel::RunQueryDsl;
+        let _ = diesel::delete(crate::schema::manual::table).execute(&mut conn);
+        let mut save_count = 0;
+        let mut filename_manuals = common::get_filename_manuals();
+        for (file_name, _, manual) in &mut filename_manuals {
+            manual.set_source_moves(&file_name);
+            if let Ok(count) = manual.save_db(&mut conn) {
+                save_count += count;
             }
         }
 
-        let manuals = &Manual::from_db(conn, "%").unwrap();
-        println!("manuals: {}", manuals.len());
+        let mut cmp_count = 0;
+        let manuals = Manual::from_db(&mut conn, "%01%");
+        if let Ok(mut manuals) = manuals {
+            cmp_count = manuals.len();
+            if let Some(manual) = manuals.get_mut(0) {
+                manual.cut_source_moves();
+                assert_eq!(filename_manuals[0].1, manual.to_string());
+            }
+        }
+
+        let mut read_count = 0;
+        if let Ok(manuals) = Manual::from_db(&mut conn, "%") {
+            read_count = manuals.len();
+        }
+
+        println!(
+            "manual save_cmp_read: {:?}",
+            (save_count, cmp_count, read_count)
+        );
     }
 }

@@ -3,13 +3,38 @@
 use crate::board;
 // use diesel;
 use crate::schema::{aspect, evaluation, manual, zorbist};
+use diesel::connection::SimpleConnection;
 use diesel::prelude::*;
+use diesel::r2d2::{ConnectionManager, Pool, PooledConnection};
 use diesel::result::Error;
 use diesel::sqlite::SqliteConnection;
 use dotenvy::dotenv;
 use std::env;
 
-pub const MANUAL_FIELD_NUM: u32 = 18;
+const DB_THREADS: usize = 3;
+
+pub type SqlitePool = Pool<ConnectionManager<SqliteConnection>>;
+pub type SqlitePooledConnection = PooledConnection<ConnectionManager<SqliteConnection>>;
+
+pub fn get_pool() -> SqlitePool {
+    use diesel::prelude::*;
+    dotenv().ok();
+
+    let database_url = env::var("DATABASE_URL").expect("DATABASE_URL must be set");
+    // SqliteConnection::establish(&database_url)
+    // .unwrap_or_else(|_| panic!("Error connecting to {}", database_url))
+
+    let manager = ConnectionManager::<SqliteConnection>::new(database_url);
+    Pool::builder().build(manager).unwrap()
+}
+
+pub fn get_conn(pool: &SqlitePool) -> SqlitePooledConnection {
+    let mut conn = pool.get().unwrap();
+    conn.batch_execute("PRAGMA foreign_keys = ON")
+        .expect("Set foreign_keys faild.");
+
+    conn
+}
 
 #[derive(Insertable, Queryable, Selectable)]
 #[diesel(table_name = zorbist)]
@@ -19,7 +44,7 @@ pub struct ZorbistData {
     pub lock: i64,
 }
 
-#[derive(Queryable, Selectable, Identifiable, Associations, Debug, PartialEq)]
+#[derive(Insertable, Queryable, Selectable, Associations)]
 #[diesel(belongs_to(ZorbistData, foreign_key = zorbist_id))]
 #[diesel(table_name = aspect)]
 #[diesel(check_for_backend(diesel::sqlite::Sqlite))]
@@ -29,18 +54,18 @@ pub struct AspectData {
     pub zorbist_id: i64,
 }
 
-#[derive(Queryable, Selectable, Identifiable, Associations, Debug, PartialEq)]
+#[derive(Insertable, Queryable, Selectable, Associations)]
 #[diesel(belongs_to(AspectData, foreign_key = aspect_id))]
 #[diesel(table_name = evaluation)]
 #[diesel(check_for_backend(diesel::sqlite::Sqlite))]
 pub struct EvaluationData {
-    pub id: i32,
+    // pub id: i32,
     pub to_index: i32,
     pub count: i32,
     pub aspect_id: i32,
 }
 
-#[derive(Debug, Insertable, Queryable, Selectable)]
+#[derive(Insertable, Queryable, Selectable, Debug)]
 #[diesel(table_name = manual)]
 #[diesel(check_for_backend(diesel::sqlite::Sqlite))]
 pub struct ManualInfo {
@@ -97,7 +122,7 @@ impl ManualInfo {
             .load::<Self>(conn)
     }
 
-    pub fn save_db(&self, conn: &mut SqliteConnection) -> Result<usize, Error> {
+    pub fn save_db(&self, conn: &mut SqlitePooledConnection) -> Result<usize, Error> {
         diesel::insert_into(manual::table)
             .values(self)
             .execute(conn)
@@ -161,25 +186,16 @@ impl ManualInfo {
     }
 }
 
-pub fn establish_connection() -> SqliteConnection {
-    use diesel::prelude::*;
-    dotenv().ok();
-
-    let database_url = env::var("DATABASE_URL").expect("DATABASE_URL must be set");
-    SqliteConnection::establish(&database_url)
-        .unwrap_or_else(|_| panic!("Error connecting to {}", database_url))
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
-    // #[ignore = "忽略：测试数据表模型"]
+    #[ignore = "忽略：测试数据表模型"]
     fn test_models() {
-        let conn = &mut establish_connection();
+        let mut conn = get_conn(&get_pool());
 
-        let result = ManualInfo::new().save_db(conn);
-        println!("Saved : {:?}", result);
+        let count = ManualInfo::new().save_db(&mut conn).unwrap_or(0);
+        println!("Saved : {:?}", count);
     }
 }
