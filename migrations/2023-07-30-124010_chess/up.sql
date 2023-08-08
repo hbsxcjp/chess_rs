@@ -1,5 +1,14 @@
 -- Your SQL goes here
 
+CREATE TABLE history (
+    id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, 
+    akey BIGINT NOT NULL,
+    lock BIGINT NOT NULL,
+    from_index INTEGER NOT NULL, 
+    to_index INTEGER NOT NULL, 
+    count INTEGER NOT NULL
+);
+
 CREATE TABLE zorbist (
     id BIGINT PRIMARY KEY NOT NULL,
     lock BIGINT NOT NULL

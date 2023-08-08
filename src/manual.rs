@@ -420,10 +420,13 @@ mod tests {
     }
 
     #[test]
-    // #[ignore = "从insert_xqbase.sql文件提取SQL语句运行将12141个manual存入数据库。"]
+    #[ignore = "从insert_xqbase.sql文件提取SQL语句运行将12141个manual存入数据库。"]
     fn test_manual_db_xqbase() {
         let conn = &mut models::get_conn(&models::get_pool());
-        let result = models::init_xqbase(conn);
-        println!("manual_db_xqbase: {:?}", result);
+        let result = models::ManualInfo::init_xqbase(conn);
+        println!(
+            "manual_db_xqbase ManualInfo::init_xqbase count: {}",
+            result.unwrap()
+        );
     }
 }

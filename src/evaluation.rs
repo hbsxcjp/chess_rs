@@ -264,6 +264,28 @@ impl Zorbist {
     }
 
     // 每次全新保存数据
+    fn save_to(
+        conn: &mut SqliteConnection,
+        zorbist_datas: Vec<ZorbistData>,
+        aspect_datas: Vec<AspectData>,
+        evaluation_datas: Vec<EvaluationData>,
+    ) -> Result<(usize, usize, usize), Error> {
+        // Sqlite3 "PRAGMA foreign_keys = ON"
+        let _ = diesel::delete(zorbist::table).execute(conn)?;
+        EvaluationData::set_seq_zero(conn);
+        let zor_count = diesel::insert_into(zorbist::table)
+            .values(zorbist_datas)
+            .execute(conn)?;
+        let asp_count = diesel::insert_into(aspect::table)
+            .values(aspect_datas)
+            .execute(conn)?;
+        let eva_count = diesel::insert_into(evaluation::table)
+            .values(evaluation_datas)
+            .execute(conn)?;
+
+        Ok((zor_count, asp_count, eva_count))
+    }
+
     pub fn save_db(&self, conn: &mut SqliteConnection) -> Result<(usize, usize, usize), Error> {
         let mut zorbist_datas = vec![];
         let mut aspect_datas = vec![];
@@ -292,37 +314,42 @@ impl Zorbist {
             }
         }
 
-        // Sqlite3 "PRAGMA foreign_keys = ON"
-        let _ = diesel::delete(zorbist::table).execute(conn)?;
-        EvaluationData::set_seq_zero(conn);
-        let zor_count = diesel::insert_into(zorbist::table)
-            .values(zorbist_datas)
-            .execute(conn)?;
-        let asp_count = diesel::insert_into(aspect::table)
-            .values(aspect_datas)
-            .execute(conn)?;
-        let eva_count = diesel::insert_into(evaluation::table)
-            .values(evaluation_datas)
-            .execute(conn)?;
-
-        Ok((zor_count, asp_count, eva_count))
+        Self::save_to(conn, zorbist_datas, aspect_datas, evaluation_datas)
     }
 
     pub fn save_db_from_manuals(
         conn: &mut SqliteConnection,
     ) -> Result<(usize, usize, usize), Error> {
-        let mut zorbist = Zorbist::new();
+        // let mut zorbist = Zorbist::new();
+        let mut zorbist_datas = vec![];
+        let mut aspect_datas = vec![];
+        let mut evaluation_datas = vec![];
         let bit_board = crate::board::Board::new().bit_board();
-        let infos = ManualInfo::from_db(conn, "%")?;
-        for info in infos {
+        for info in ManualInfo::from_db(conn, "%")? {
             if let Some(rowcols) = info.rowcols {
-                for (id, lock, aspect) in bit_board.clone().get_id_lock_asps(rowcols) {
-                    zorbist.insert(id, lock, aspect);
-                }
+                let (mut zorbists, mut aspects, mut evaluations) =
+                    bit_board.clone().get_zor_asp_evals(rowcols);
+                zorbist_datas.append(&mut zorbists);
+                aspect_datas.append(&mut aspects);
+                evaluation_datas.append(&mut evaluations);
             }
         }
 
-        zorbist.save_db(conn)
+        Self::save_to(conn, zorbist_datas, aspect_datas, evaluation_datas)
+        // zorbist.save_db(conn)
+    }
+
+    pub fn from_key_values(key_values: Vec<(u64, u64, i32, i32, i32)>) -> Self {
+        let mut zorbist = Self::new();
+        // zorbist.insert(id, lock, aspect_evaluation);
+
+        zorbist
+    }
+
+    pub fn get_key_values(&self) -> Vec<(u64, u64, i32, i32, i32)> {
+        let mut result = vec![];
+
+        result
     }
 
     pub fn to_string(&self) -> String {
@@ -380,5 +407,15 @@ mod tests {
         let conn = &mut models::get_conn(&models::get_pool());
         let result = Zorbist::save_db_from_manuals(conn).unwrap();
         println!("Save_from_db_manuals zor_asp_eva: {:?}", result);
+
+        let man_count = models::ManualInfo::count(conn).unwrap();
+        let zor_count = models::ZorbistData::count(conn).unwrap();
+        let asp_count = models::AspectData::count(conn).unwrap();
+        let eva_count = models::EvaluationData::count(conn).unwrap();
+        println!(
+            "manual_info count: {} zor_asp_eva: {:?}",
+            man_count,
+            (zor_count, asp_count, eva_count)
+        );
     }
 }

@@ -2,7 +2,7 @@
 
 use crate::board;
 // use diesel;
-use crate::schema::{self, aspect, evaluation, manual, zorbist};
+use crate::schema::{self, aspect, evaluation, history, manual, zorbist};
 use diesel::connection::SimpleConnection;
 use diesel::prelude::*;
 use diesel::r2d2::{ConnectionManager, Pool, PooledConnection};
@@ -16,24 +16,15 @@ const DB_THREADS: usize = 3;
 pub type SqlitePool = Pool<ConnectionManager<SqliteConnection>>;
 pub type SqlitePooledConnection = PooledConnection<ConnectionManager<SqliteConnection>>;
 
-pub fn get_pool() -> SqlitePool {
-    use diesel::prelude::*;
-    dotenv().ok();
-
-    let database_url = env::var("DATABASE_URL").expect("DATABASE_URL must be set");
-    // SqliteConnection::establish(&database_url)
-    // .unwrap_or_else(|_| panic!("Error connecting to {}", database_url))
-
-    let manager = ConnectionManager::<SqliteConnection>::new(database_url);
-    Pool::builder().build(manager).unwrap()
-}
-
-pub fn get_conn(pool: &SqlitePool) -> SqlitePooledConnection {
-    let mut conn = pool.get().unwrap();
-    conn.batch_execute("PRAGMA foreign_keys = ON")
-        .expect("Set foreign_keys faild.");
-
-    conn
+#[derive(Insertable, Queryable, Selectable)]
+#[diesel(table_name = history)]
+#[diesel(check_for_backend(diesel::sqlite::Sqlite))]
+pub struct HistoryData {
+    pub akey: i64,
+    pub lock: i64,
+    pub from_index: i32,
+    pub to_index: i32,
+    pub count: i32,
 }
 
 #[derive(Insertable, Queryable, Selectable)]
@@ -90,31 +81,126 @@ pub struct ManualInfo {
     pub movestring: Option<String>,
 }
 
-pub fn set_seq_zero(conn: &mut SqliteConnection, table: &str) {
+pub fn get_pool() -> SqlitePool {
+    use diesel::prelude::*;
+    dotenv().ok();
+
+    let database_url = env::var("DATABASE_URL").expect("DATABASE_URL must be set");
+    // SqliteConnection::establish(&database_url)
+    // .unwrap_or_else(|_| panic!("Error connecting to {}", database_url))
+
+    let manager = ConnectionManager::<SqliteConnection>::new(database_url);
+    Pool::builder().build(manager).unwrap()
+}
+
+pub fn get_conn(pool: &SqlitePool) -> SqlitePooledConnection {
+    let mut conn = pool.get().unwrap();
+    conn.batch_execute("PRAGMA foreign_keys = ON")
+        .expect("Set foreign_keys faild.");
+
+    conn
+}
+
+fn set_seq_zero(conn: &mut SqliteConnection, table: &str) {
     let _ = conn.batch_execute(&format!(
         "UPDATE sqlite_sequence SET seq = 0 WHERE name = '{table}'"
     ));
 }
 
-pub fn init_xqbase(conn: &mut SqliteConnection) -> QueryResult<()> {
-    ManualInfo::set_seq_zero(conn);
-    let query = std::fs::read_to_string("insert_xqbase.sql").unwrap();
-    conn.batch_execute(&query)
+impl HistoryData {
+    pub fn set_seq_zero(conn: &mut SqliteConnection) {
+        set_seq_zero(conn, "history");
+    }
+
+    pub fn count(conn: &mut SqliteConnection) -> Result<i64, Error> {
+        use diesel::dsl::count;
+        use schema::history::dsl::*;
+        history.select(count(id)).first::<i64>(conn)
+    }
+
+    pub fn from_db(conn: &mut SqliteConnection) -> Result<Vec<Self>, Error> {
+        history::table.select(Self::as_select()).load::<Self>(conn)
+    }
+
+    pub fn save_db(&self, conn: &mut SqlitePooledConnection) -> Result<usize, Error> {
+        diesel::insert_into(history::table)
+            .values(self)
+            .execute(conn)
+    }
+
+    pub fn init_xqbase(conn: &mut SqliteConnection) -> Result<usize, Error> {
+        let _ = diesel::delete(history::table).execute(conn);
+        HistoryData::set_seq_zero(conn);
+
+        let mut history_datas = vec![];
+        let bit_board = crate::board::Board::new().bit_board();
+        for info in ManualInfo::from_db(conn, "%")? {
+            if let Some(rowcols) = info.rowcols {
+                for key_value in bit_board.clone().get_key_values(rowcols) {
+                    history_datas.push(HistoryData::from(key_value));
+                }
+            }
+        }
+
+        diesel::insert_into(history::table)
+            .values(history_datas)
+            .execute(conn)
+    }
+
+    pub fn from(key_value: (i64, i64, i32, i32, i32)) -> Self {
+        let (akey, lock, from_index, to_index, count) = key_value;
+        Self {
+            akey,
+            lock,
+            from_index,
+            to_index,
+            count,
+        }
+    }
+
+    pub fn get_key_value(&self) -> (i64, i64, i32, i32, i32) {
+        (
+            self.akey,
+            self.lock,
+            self.from_index,
+            self.to_index,
+            self.count,
+        )
+    }
+}
+
+impl ZorbistData {
+    pub fn count(conn: &mut SqliteConnection) -> Result<i64, Error> {
+        use diesel::dsl::count;
+        use schema::zorbist::dsl::*;
+        zorbist.select(count(id)).first::<i64>(conn)
+    }
 }
 
 impl AspectData {
     pub fn max_id(conn: &mut SqliteConnection) -> Result<i32, Error> {
         use diesel::dsl::max;
         use schema::aspect::dsl::*;
+        let max_id = aspect.select(max(id)).limit(1).load::<Option<i32>>(conn)?;
+        Ok(max_id[0].unwrap())
+    }
 
-        let ids: Vec<Option<i32>> = aspect.select(max(id)).load(conn)?;
-        Ok(ids[0].unwrap())
+    pub fn count(conn: &mut SqliteConnection) -> Result<i64, Error> {
+        use diesel::dsl::count;
+        use schema::aspect::dsl::*;
+        aspect.select(count(id)).first::<i64>(conn)
     }
 }
 
 impl EvaluationData {
     pub fn set_seq_zero(conn: &mut SqliteConnection) {
         set_seq_zero(conn, "evaluation");
+    }
+
+    pub fn count(conn: &mut SqliteConnection) -> Result<i64, Error> {
+        use diesel::dsl::count;
+        use schema::evaluation::dsl::*;
+        evaluation.select(count(id)).first::<i64>(conn)
     }
 }
 
@@ -145,6 +231,22 @@ impl ManualInfo {
 
     pub fn set_seq_zero(conn: &mut SqliteConnection) {
         set_seq_zero(conn, "manual");
+    }
+
+    pub fn count(conn: &mut SqliteConnection) -> Result<i64, Error> {
+        use diesel::dsl::count;
+        use schema::manual::dsl::*;
+        manual.select(count(id)).first::<i64>(conn)
+    }
+
+    pub fn init_xqbase(conn: &mut SqliteConnection) -> Result<i64, Error> {
+        let _ = diesel::delete(manual::table).execute(conn);
+        ManualInfo::set_seq_zero(conn);
+
+        let query = std::fs::read_to_string("insert_xqbase.sql").unwrap();
+        let _ = conn.batch_execute(&query);
+
+        ManualInfo::count(conn)
     }
 
     pub fn from_db(conn: &mut SqliteConnection, title_part: &str) -> Result<Vec<Self>, Error> {

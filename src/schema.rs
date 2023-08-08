@@ -18,6 +18,17 @@ diesel::table! {
 }
 
 diesel::table! {
+    history (id) {
+        id -> Integer,
+        akey -> BigInt,
+        lock -> BigInt,
+        from_index -> Integer,
+        to_index -> Integer,
+        count -> Integer,
+    }
+}
+
+diesel::table! {
     manual (id) {
         id -> Integer,
         source -> Nullable<Text>,
@@ -54,6 +65,7 @@ diesel::joinable!(evaluation -> aspect (aspect_id));
 diesel::allow_tables_to_appear_in_same_query!(
     aspect,
     evaluation,
+    history,
     manual,
     zorbist,
 );

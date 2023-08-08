@@ -10,6 +10,7 @@ use crate::coord::{
 use crate::evaluation;
 use crate::manual;
 use crate::manual_move;
+use crate::models;
 use crate::piece::{self, COLORCOUNT, KINDCOUNT};
 use std::rc::Rc;
 
@@ -344,28 +345,70 @@ impl BitBoard {
         self.get_zorbist(color, aspect)
     }
 
-    pub fn get_id_lock_asps(&mut self, rowcols: String) -> Vec<(u64, u64, evaluation::Aspect)> {
-        // let mut zorbist = evaluation::Zorbist::new();
-        let mut id_lock_asps = vec![];
+    pub fn get_key_values(&mut self, rowcols: String) -> Vec<(i64, i64, i32, i32, i32)> {
+        let mut key_values = vec![];
         let mut color = piece::Color::Red;
         for coordpair in manual_move::ManualMove::get_coordpairs_from_rowcols(&rowcols).unwrap() {
             let (from_index, to_index) = coordpair.from_to_index();
-            let key = self.get_key(color);
-            let lock = self.get_lock(color);
+            let akey = self.get_key(color) as i64;
+            let lock = self.get_lock(color) as i64;
             if self.do_move(from_index, to_index).is_some() {
-                let aspect = evaluation::Aspect::from(
-                    from_index,
-                    evaluation::ToIndex::from(to_index, evaluation::Evaluation::from(1)),
-                );
-                id_lock_asps.push((key, lock, aspect));
-                // zorbist.insert(key, lock, aspect);
+                let from_index = from_index as i32;
+                let to_index = to_index as i32;
+                key_values.push((akey, lock, from_index, to_index, 1));
             }
 
             color = piece::other_color(color);
         }
 
-        id_lock_asps
-        // zorbist
+        key_values
+    }
+
+    pub fn get_zor_asp_evals(
+        &mut self,
+        rowcols: String,
+    ) -> (
+        Vec<models::ZorbistData>,
+        Vec<models::AspectData>,
+        Vec<models::EvaluationData>,
+    ) {
+        // let mut id_lock_asps = vec![];
+        let mut zorbist_datas = vec![];
+        let mut aspect_datas = vec![];
+        let mut evaluation_datas = vec![];
+        let mut aspect_id = 0;
+        let mut color = piece::Color::Red;
+        for coordpair in manual_move::ManualMove::get_coordpairs_from_rowcols(&rowcols).unwrap() {
+            let (from_index, to_index) = coordpair.from_to_index();
+            let id = self.get_key(color) as i64;
+            let lock = self.get_lock(color) as i64;
+            if self.do_move(from_index, to_index).is_some() {
+                // let aspect = evaluation::Aspect::from(
+                //     from_index,
+                //     evaluation::ToIndex::from(to_index, evaluation::Evaluation::from(1)),
+                // );
+                // id_lock_asps.push((key, lock, aspect));
+                aspect_id += 1;
+                let from_index = from_index as i32;
+                let to_index = to_index as i32;
+                zorbist_datas.push(models::ZorbistData { id, lock });
+                aspect_datas.push(models::AspectData {
+                    id: aspect_id,
+                    from_index,
+                    zorbist_id: id,
+                });
+                evaluation_datas.push(models::EvaluationData {
+                    to_index,
+                    count: 1,
+                    aspect_id,
+                });
+            }
+
+            color = piece::other_color(color);
+        }
+
+        // id_lock_asps
+        (zorbist_datas, aspect_datas, evaluation_datas)
     }
 
     pub fn to_string(&mut self) -> String {
