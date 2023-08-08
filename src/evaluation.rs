@@ -3,7 +3,7 @@
 
 // use serde_derive::{Deserialize, Serialize};
 // use std::cell::RefCell;
-use crate::models::{AspectData, EvaluationData, ZorbistData};
+use crate::models::{AspectData, EvaluationData, ManualInfo, ZorbistData};
 use crate::schema::{aspect, evaluation, zorbist};
 use diesel::prelude::*;
 use diesel::result::Error;
@@ -164,9 +164,9 @@ impl Zorbist {
         }
     }
 
-    pub fn from(key: u64, lock: u64, aspect_evaluation: Aspect) -> Self {
+    pub fn from(id: u64, lock: u64, aspect_evaluation: Aspect) -> Self {
         let mut zorbist = Self::new();
-        zorbist.insert(key, lock, aspect_evaluation);
+        zorbist.insert(id, lock, aspect_evaluation);
 
         zorbist
     }
@@ -185,8 +185,8 @@ impl Zorbist {
     }
 
     pub fn append(&mut self, other_zorbist: Self) {
-        for (key, (lock, aspect_evaluation)) in other_zorbist.inner {
-            self.insert(key, lock, aspect_evaluation);
+        for (id, (lock, aspect_evaluation)) in other_zorbist.inner {
+            self.insert(id, lock, aspect_evaluation);
         }
     }
 
@@ -195,25 +195,25 @@ impl Zorbist {
         bit_board: &bit_board::BitBoard,
         color: piece::Color,
     ) -> Option<&Aspect> {
-        let (key, lock) = bit_board.get_key_lock(color);
-        let real_key = self.get_real_key(key, lock)?;
+        let (id, lock) = bit_board.get_key_lock(color);
+        let real_key = self.get_real_key(id, lock)?;
 
         self.inner
             .get(&real_key)
             .map(|(_, aspect_evaluation)| aspect_evaluation)
     }
 
-    fn get_mut_aspect_evaluation(&mut self, key: u64, lock: u64) -> Option<&mut Aspect> {
-        let real_key = self.get_real_key(key, lock)?;
+    fn get_mut_aspect_evaluation(&mut self, id: u64, lock: u64) -> Option<&mut Aspect> {
+        let real_key = self.get_real_key(id, lock)?;
 
         self.inner
             .get_mut(&real_key)
             .map(|(_, aspect_evaluation)| aspect_evaluation)
     }
 
-    fn get_real_key(&self, key: u64, lock: u64) -> Option<u64> {
-        let mut real_key = key;
-        if !self.inner.contains_key(&key) {
+    fn get_real_key(&self, id: u64, lock: u64) -> Option<u64> {
+        let mut real_key = id;
+        if !self.inner.contains_key(&id) {
             return None;
         }
 
@@ -224,7 +224,7 @@ impl Zorbist {
 
             assert!(
                 false,
-                "Key:({key:016x})->RealKey:({real_key:016x})'s Lock({lock:016x}) is not find!\n"
+                "Key:({id:016x})->RealKey:({real_key:016x})'s Lock({lock:016x}) is not find!\n"
             );
 
             real_key ^= bit_constant::COLLIDEZOBRISTKEY[index];
@@ -232,7 +232,7 @@ impl Zorbist {
 
         // assert!(
         //     self.inner.contains_key(&real_key),
-        //     "Key:({key:016x})->RealKey:({real_key:016x})'s Lock({lock:016x}) is not find!\n"
+        //     "Key:({id:016x})->RealKey:({real_key:016x})'s Lock({lock:016x}) is not find!\n"
         // );
 
         Some(real_key)
@@ -294,6 +294,7 @@ impl Zorbist {
 
         // Sqlite3 "PRAGMA foreign_keys = ON"
         let _ = diesel::delete(zorbist::table).execute(conn)?;
+        EvaluationData::set_seq_zero(conn);
         let zor_count = diesel::insert_into(zorbist::table)
             .values(zorbist_datas)
             .execute(conn)?;
@@ -307,10 +308,27 @@ impl Zorbist {
         Ok((zor_count, asp_count, eva_count))
     }
 
+    pub fn save_db_from_manuals(
+        conn: &mut SqliteConnection,
+    ) -> Result<(usize, usize, usize), Error> {
+        let mut zorbist = Zorbist::new();
+        let bit_board = crate::board::Board::new().bit_board();
+        let infos = ManualInfo::from_db(conn, "%")?;
+        for info in infos {
+            if let Some(rowcols) = info.rowcols {
+                for (id, lock, aspect) in bit_board.clone().get_id_lock_asps(rowcols) {
+                    zorbist.insert(id, lock, aspect);
+                }
+            }
+        }
+
+        zorbist.save_db(conn)
+    }
+
     pub fn to_string(&self) -> String {
         let mut result = String::new();
-        for (key, (lock, aspect_evaluation)) in self.inner.iter() {
-            result.push_str(&format!("key:  {} lock: {}\n", key, lock));
+        for (id, (lock, aspect_evaluation)) in self.inner.iter() {
+            result.push_str(&format!("id:  {} lock: {}\n", id, lock));
             result.push_str(&aspect_evaluation.to_string());
         }
 
@@ -325,44 +343,42 @@ impl Zorbist {
 
 #[cfg(test)]
 mod tests {
-    // use super::*;
+    use super::*;
     use crate::manual;
     use crate::models;
 
     #[test]
-    // #[ignore = "从文件提取zorbist后存入数据库。"]
-    fn test_evaluation() {
+    #[ignore = "从文件提取zorbist后存入数据库"]
+    fn test_eval_from_file() {
         let filename_manuals = crate::common::get_filename_manuals();
         let manuals = filename_manuals
             .into_iter()
             .map(|(_, _, manual)| manual)
             .collect::<Vec<manual::Manual>>();
         let zorbist = manual::get_zorbist_manuals(manuals);
-
-        // let mut conn = database::get_connection();
-        // let zorbist = database::get_zorbist(&mut conn);
-        // println!("zorbist: {}", zorbist.len());
-        let mut conn = models::get_conn(&models::get_pool());
-        let result = zorbist.save_db(&mut conn).expect("Save Err.");
-        println!("evaluation zor_asp_eva: {:?}", result);
-
         let result = zorbist.to_string();
         std::fs::write(format!("tests/output/zobrist_file.txt"), result).expect("Write Err.");
 
-        // let json_file_name = "tests/output/serde_json.txt";
-        // let result = serde_json::to_string(&zorbist).unwrap();
-        // std::fs::write(json_file_name, result).expect("Write Err.");
-
-        // serde_json
-        // let vec_u8 = std::fs::read(json_file_name).unwrap();
-        // let zorbist_eval: ZorbistEvaluation =
-        //     serde_json::from_str(&String::from_utf8(vec_u8).unwrap()).unwrap();
-        // println!("zorbist_eval: {}", zorbist_eval.len());
-        // let result = zorbist_eval.to_string();
-        // std::fs::write(format!("tests/output/zobrist_eval.txt"), result).expect("Write Err.");
+        let conn = &mut models::get_conn(&models::get_pool());
+        let result = zorbist.save_db(conn).expect("Save Err.");
+        println!("Save_from_file zor_asp_eva: {:?}", result);
     }
 
     #[test]
-    #[ignore = "从数据库提取zorbist。"]
-    fn test_evaluation_db() {}
+    #[ignore = "从数据库直接提取zorbist"]
+    fn test_eval_from_db() {
+        let conn = &mut models::get_conn(&models::get_pool());
+        let zorbist = Zorbist::from_db(conn).unwrap();
+        println!("zorbist len: {}", zorbist.len());
+        let result = zorbist.to_string();
+        std::fs::write(format!("tests/output/zobrist_db.txt"), result).expect("Write Err.");
+    }
+
+    #[test]
+    #[ignore = "从数据库提取manuals后转换成zorbist，再存入数据库"]
+    fn test_eval_from_db_manuals() {
+        let conn = &mut models::get_conn(&models::get_pool());
+        let result = Zorbist::save_db_from_manuals(conn).unwrap();
+        println!("Save_from_db_manuals zor_asp_eva: {:?}", result);
+    }
 }

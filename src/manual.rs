@@ -385,21 +385,21 @@ mod tests {
     #[test]
     #[ignore = "从文件提取manual后存入数据库。"]
     fn test_manual_db() {
-        let mut conn = models::get_conn(&models::get_pool());
-
+        let conn = &mut models::get_conn(&models::get_pool());
+        models::ManualInfo::set_seq_zero(conn);
         use diesel::RunQueryDsl;
-        let _ = diesel::delete(crate::schema::manual::table).execute(&mut conn);
+        let _ = diesel::delete(crate::schema::manual::table).execute(conn);
         let mut save_count = 0;
         let mut filename_manuals = common::get_filename_manuals();
         for (file_name, _, manual) in &mut filename_manuals {
             manual.set_source_moves(&file_name);
-            if let Ok(count) = manual.save_db(&mut conn) {
+            if let Ok(count) = manual.save_db(conn) {
                 save_count += count;
             }
         }
 
         let mut cmp_count = 0;
-        let manuals = Manual::from_db(&mut conn, "%01%");
+        let manuals = Manual::from_db(conn, "%01%");
         if let Ok(mut manuals) = manuals {
             cmp_count = manuals.len();
             if let Some(manual) = manuals.get_mut(0) {
@@ -409,7 +409,7 @@ mod tests {
         }
 
         let mut read_count = 0;
-        if let Ok(manuals) = Manual::from_db(&mut conn, "%") {
+        if let Ok(manuals) = Manual::from_db(conn, "%") {
             read_count = manuals.len();
         }
 
@@ -417,5 +417,13 @@ mod tests {
             "manual save_cmp_read: {:?}",
             (save_count, cmp_count, read_count)
         );
+    }
+
+    #[test]
+    // #[ignore = "从insert_xqbase.sql文件提取SQL语句运行将12141个manual存入数据库。"]
+    fn test_manual_db_xqbase() {
+        let conn = &mut models::get_conn(&models::get_pool());
+        let result = models::init_xqbase(conn);
+        println!("manual_db_xqbase: {:?}", result);
     }
 }

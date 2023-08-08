@@ -344,8 +344,9 @@ impl BitBoard {
         self.get_zorbist(color, aspect)
     }
 
-    pub fn get_zorbist_rowcols(&mut self, rowcols: String) -> evaluation::Zorbist {
-        let mut zorbist = evaluation::Zorbist::new();
+    pub fn get_id_lock_asps(&mut self, rowcols: String) -> Vec<(u64, u64, evaluation::Aspect)> {
+        // let mut zorbist = evaluation::Zorbist::new();
+        let mut id_lock_asps = vec![];
         let mut color = piece::Color::Red;
         for coordpair in manual_move::ManualMove::get_coordpairs_from_rowcols(&rowcols).unwrap() {
             let (from_index, to_index) = coordpair.from_to_index();
@@ -356,13 +357,15 @@ impl BitBoard {
                     from_index,
                     evaluation::ToIndex::from(to_index, evaluation::Evaluation::from(1)),
                 );
-                zorbist.insert(key, lock, aspect);
+                id_lock_asps.push((key, lock, aspect));
+                // zorbist.insert(key, lock, aspect);
             }
 
             color = piece::other_color(color);
         }
 
-        zorbist
+        id_lock_asps
+        // zorbist
     }
 
     pub fn to_string(&mut self) -> String {

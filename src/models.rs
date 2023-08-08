@@ -2,7 +2,7 @@
 
 use crate::board;
 // use diesel;
-use crate::schema::{aspect, evaluation, manual, zorbist};
+use crate::schema::{self, aspect, evaluation, manual, zorbist};
 use diesel::connection::SimpleConnection;
 use diesel::prelude::*;
 use diesel::r2d2::{ConnectionManager, Pool, PooledConnection};
@@ -90,6 +90,34 @@ pub struct ManualInfo {
     pub movestring: Option<String>,
 }
 
+pub fn set_seq_zero(conn: &mut SqliteConnection, table: &str) {
+    let _ = conn.batch_execute(&format!(
+        "UPDATE sqlite_sequence SET seq = 0 WHERE name = '{table}'"
+    ));
+}
+
+pub fn init_xqbase(conn: &mut SqliteConnection) -> QueryResult<()> {
+    ManualInfo::set_seq_zero(conn);
+    let query = std::fs::read_to_string("insert_xqbase.sql").unwrap();
+    conn.batch_execute(&query)
+}
+
+impl AspectData {
+    pub fn max_id(conn: &mut SqliteConnection) -> Result<i32, Error> {
+        use diesel::dsl::max;
+        use schema::aspect::dsl::*;
+
+        let ids: Vec<Option<i32>> = aspect.select(max(id)).load(conn)?;
+        Ok(ids[0].unwrap())
+    }
+}
+
+impl EvaluationData {
+    pub fn set_seq_zero(conn: &mut SqliteConnection) {
+        set_seq_zero(conn, "evaluation");
+    }
+}
+
 impl ManualInfo {
     pub fn new() -> Self {
         ManualInfo {
@@ -113,6 +141,10 @@ impl ManualInfo {
             fen: Some(board::FEN.to_string() + " r - - 0 1"),
             movestring: None,
         }
+    }
+
+    pub fn set_seq_zero(conn: &mut SqliteConnection) {
+        set_seq_zero(conn, "manual");
     }
 
     pub fn from_db(conn: &mut SqliteConnection, title_part: &str) -> Result<Vec<Self>, Error> {
