@@ -6,8 +6,8 @@ use crate::evaluation;
 use crate::manual_move;
 use crate::{board, models};
 // use diesel::prelude::*;
-use diesel::result::Error;
-use diesel::sqlite::SqliteConnection;
+// use diesel::result::Error;
+// use diesel::sqlite::SqliteConnection;
 use encoding::all::GBK;
 use encoding::{DecoderTrap, Encoding};
 use std::borrow::Borrow;
@@ -75,18 +75,6 @@ impl Manual {
         Ok(Manual::from(info, manual_move))
     }
 
-    pub fn from_db(conn: &mut SqliteConnection, title_part: &str) -> Result<Vec<Self>, Error> {
-        let mut result = vec![];
-        let infos = models::ManualInfo::from_db(conn, title_part)?;
-        for info in infos {
-            if let Ok(manual) = Self::from_info(info) {
-                result.push(manual);
-            }
-        }
-
-        Ok(result)
-    }
-
     pub fn set_source_moves(&mut self, source: &str) {
         self.info.source = Some(source.to_string());
         self.info.rowcols = Some(self.manual_move.to_rowcols());
@@ -97,10 +85,6 @@ impl Manual {
         self.info.source = None;
         self.info.rowcols = None;
         self.info.movestring = None;
-    }
-
-    pub fn save_db(&self, conn: &mut models::SqlitePooledConnection) -> Result<usize, Error> {
-        self.info.borrow().save_db(conn)
     }
 
     pub fn write(&self, file_name: &str) -> Result<(), std::io::ErrorKind> {
@@ -348,9 +332,23 @@ impl Manual {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use diesel::result::Error;
+    use diesel::sqlite::SqliteConnection;
+
+    fn from_db(conn: &mut SqliteConnection, title_part: &str) -> Result<Vec<Manual>, Error> {
+        let mut result = vec![];
+        let infos = models::ManualInfo::from_db(conn, title_part)?;
+        for info in infos {
+            if let Ok(manual) = Manual::from_info(info) {
+                result.push(manual);
+            }
+        }
+
+        Ok(result)
+    }
 
     #[test]
-    fn test_manual() {
+    fn test_manual_file() {
         let manual = Manual::new();
         assert_eq!("[title: 未命名]\n[game: 人机对战]\n[fen: rnbakabnr/9/1c5c1/p1p1p1p1p/9/9/P1P1P1P1P/1C5C1/9/RNBAKABNR r - - 0 1]\n\n\n", 
             manual.to_string());
@@ -385,19 +383,19 @@ mod tests {
     #[test]
     #[ignore = "从文件提取manual后存入数据库。"]
     fn test_manual_db() {
-        let conn = &mut models::get_conn(&models::get_pool());
-        models::ManualInfo::clear(conn);
+        let conn = &mut models::get_conn();
+
         let mut save_count = 0;
         let mut filename_manuals = common::get_filename_manuals();
         for (file_name, _, manual) in &mut filename_manuals {
             manual.set_source_moves(&file_name);
-            if let Ok(count) = manual.save_db(conn) {
+            if let Ok(count) = manual.info.borrow().save_db(conn) {
                 save_count += count;
             }
         }
 
         let mut cmp_count = 0;
-        let manuals = Manual::from_db(conn, "%01%");
+        let manuals = from_db(conn, "%01%");
         if let Ok(mut manuals) = manuals {
             cmp_count = manuals.len();
             if let Some(manual) = manuals.get_mut(0) {
@@ -407,7 +405,7 @@ mod tests {
         }
 
         let mut read_count = 0;
-        if let Ok(manuals) = Manual::from_db(conn, "%") {
+        if let Ok(manuals) = from_db(conn, "%") {
             read_count = manuals.len();
         }
 

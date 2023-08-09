@@ -3,7 +3,7 @@
 
 // use serde_derive::{Deserialize, Serialize};
 // use std::cell::RefCell;
-use crate::models::{AspectData, EvaluationData, ManualInfo, ZorbistData};
+use crate::models::{self, AspectData, EvaluationData, ManualInfo, ZorbistData};
 use crate::schema::{aspect, evaluation, zorbist};
 use diesel::prelude::*;
 use diesel::result::Error;
@@ -318,39 +318,55 @@ impl Zorbist {
 
     pub fn from_db_manuals(conn: &mut SqliteConnection) -> Result<Self, Error> {
         let mut zorbist = Zorbist::new();
-        // let mut zorbist_datas = vec![];
-        // let mut aspect_datas = vec![];
-        // let mut evaluation_datas = vec![];
         let bit_board = crate::board::Board::new().bit_board();
         for info in ManualInfo::from_db(conn, "%")? {
             if let Some(rowcols) = info.rowcols {
                 for (id, lock, aspect) in bit_board.clone().get_id_lock_asps(rowcols) {
                     zorbist.insert(id, lock, aspect);
                 }
-                // zorbist_datas.append(&mut zorbists);
-                // aspect_datas.append(&mut aspects);
-                // evaluation_datas.append(&mut evaluations);
             }
         }
 
         Ok(zorbist)
-        // Ok((zorbist_datas, aspect_datas, evaluation_datas))
-        // Self::save_to(conn, zorbist_datas, aspect_datas, evaluation_datas)
-        // zorbist.save_db(conn)
     }
 
-    // pub fn from_key_values(key_values: Vec<(u64, u64, i32, i32, i32)>) -> Self {
-    //     let mut zorbist = Self::new();
-    //     // zorbist.insert(id, lock, aspect_evaluation);
+    pub fn from_history_datas(history_datas: &Vec<models::HistoryData>) -> Self {
+        let mut zorbist = Self::new();
+        for history_data in history_datas {
+            zorbist.insert(
+                history_data.akey as u64,
+                history_data.lock as u64,
+                Aspect::from(
+                    history_data.from_index as usize,
+                    ToIndex::from(
+                        history_data.to_index as usize,
+                        Evaluation::from(history_data.count as usize),
+                    ),
+                ),
+            );
+        }
 
-    //     zorbist
-    // }
+        zorbist
+    }
 
-    // pub fn get_key_values(&self) -> Vec<(u64, u64, i32, i32, i32)> {
-    //     let mut result = vec![];
+    pub fn get_history_datas(&self) -> Vec<models::HistoryData> {
+        let mut history_datas = vec![];
+        for (akey, (lock, aspect)) in self.inner.iter() {
+            for (from_index, to_index_eval) in aspect.inner.iter() {
+                for (to_index, eval) in to_index_eval.inner.iter() {
+                    history_datas.push(models::HistoryData::from((
+                        *akey,
+                        *lock,
+                        *from_index,
+                        *to_index,
+                        eval.count,
+                    )));
+                }
+            }
+        }
 
-    //     result
-    // }
+        history_datas
+    }
 
     pub fn to_string(&self) -> String {
         let mut result = String::new();
@@ -386,7 +402,7 @@ mod tests {
         let result = zorbist.to_string();
         std::fs::write(format!("tests/output/zobrist_file.txt"), result).expect("Write Err.");
 
-        let conn = &mut models::get_conn(&models::get_pool());
+        let conn = &mut models::get_conn();
         let result = zorbist.save_db(conn).expect("Save Err.");
         println!("Save_from_file zor_asp_eva: {:?}", result);
     }
@@ -394,18 +410,15 @@ mod tests {
     #[test]
     #[ignore = "从数据库提取manuals后转换成zorbist. (4.25s)"]
     fn test_eval_from_db_manuals() {
-        let conn = &mut models::get_conn(&models::get_pool());
+        let conn = &mut models::get_conn();
         let zorbist = Zorbist::from_db_manuals(conn).unwrap();
         println!("From_db_manuals: {}", (zorbist.len()));
-
-        // let result = zorbist.save_db(conn).expect("Save Err.");
-        // println!("Save_from_db zor_asp_eva: {:?}", result);
     }
 
     #[test]
     #[ignore = "从数据库提取manuals转换成的zorbist_datas再存入数据库. (25.89)"]
     fn test_eval_save_db() {
-        let conn = &mut models::get_conn(&models::get_pool());
+        let conn = &mut models::get_conn();
         let zorbist = Zorbist::from_db_manuals(conn).unwrap();
         println!("From_db_manuals: {}", (zorbist.len()));
 
@@ -424,12 +437,23 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "从数据库zorbist表直接提取zorbist. (6.77s)"]
+    #[ignore = "从数据库zorbist表直接提取zorbist. (8,63s)"]
     fn test_eval_from_db() {
-        let conn = &mut models::get_conn(&models::get_pool());
+        let conn = &mut models::get_conn();
         let zorbist = Zorbist::from_db(conn).unwrap();
         println!("zorbist len: {}", zorbist.len());
-        // let result = zorbist.to_string();
-        // std::fs::write(format!("tests/output/zobrist_db.txt"), result).expect("Write Err.");
+    }
+
+    #[test]
+    #[ignore = "从数据表提取history_datas(2.12s), 转换为zorbist(4.22s), 存入数据库(12.52s). (18.86s)"]
+    fn test_eval_from_db_history() {
+        let conn = &mut models::get_conn();
+        let history_datas = models::HistoryData::from_db(conn).unwrap();
+        let zorbist = Zorbist::from_history_datas(&history_datas);
+        println!("zorbist len: {}", zorbist.len());
+
+        let history_datas = zorbist.get_history_datas();
+        let _ = models::HistoryData::save_db(conn, &history_datas);
+        println!("history_datas len: {}", history_datas.len());
     }
 }

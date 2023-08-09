@@ -16,6 +16,10 @@ const DB_THREADS: usize = 3;
 pub type SqlitePool = Pool<ConnectionManager<SqliteConnection>>;
 pub type SqlitePooledConnection = PooledConnection<ConnectionManager<SqliteConnection>>;
 
+// pub struct DB {
+//     conn: Option<SqlitePooledConnection>,
+// }
+
 #[derive(Insertable, Queryable, Selectable)]
 #[diesel(table_name = history)]
 #[diesel(check_for_backend(diesel::sqlite::Sqlite))]
@@ -93,9 +97,9 @@ pub fn get_pool() -> SqlitePool {
     Pool::builder().build(manager).unwrap()
 }
 
-pub fn get_conn(pool: &SqlitePool) -> SqlitePooledConnection {
-    let mut conn = pool.get().unwrap();
-    conn.batch_execute("PRAGMA foreign_keys = ON")
+pub fn get_conn() -> SqlitePooledConnection {
+    let mut conn = get_pool().get().unwrap();
+    conn.batch_execute("PRAGMA foreign_keys = ON; PRAGMA synchronous = OFF;")
         .expect("Set foreign_keys faild.");
 
     conn
@@ -123,10 +127,10 @@ impl HistoryData {
         history::table.select(Self::as_select()).load::<Self>(conn)
     }
 
-    pub fn save_db(conn: &mut SqliteConnection, selfs: &Vec<Self>) -> Result<usize, Error> {
+    pub fn save_db(conn: &mut SqliteConnection, history_datas: &Vec<Self>) -> Result<usize, Error> {
         HistoryData::clear(conn);
         diesel::insert_into(history::table)
-            .values(selfs)
+            .values(history_datas)
             .execute(conn)
     }
 
@@ -327,26 +331,26 @@ mod tests {
     use super::*;
 
     #[test]
-    #[ignore = "忽略：测试数据表模型"]
-    fn test_models() {
-        let mut conn = get_conn(&get_pool());
+    #[ignore = "测试manualinfo模型"]
+    fn test_manualinfo() {
+        let conn = &mut get_conn();
 
-        let count = ManualInfo::new().save_db(&mut conn).unwrap_or(0);
+        let count = ManualInfo::new().save_db(conn).unwrap_or(0);
         println!("Saved : {:?}", count);
     }
 
     #[test]
     #[ignore = "从insert_xqbase.sql文件提取SQL语句运行将12141个manual存入数据库。(神速！)"]
-    fn test_models_init_xqbase_manuals() {
-        let conn = &mut get_conn(&get_pool());
+    fn test_init_xqbase_manuals() {
+        let conn = &mut get_conn();
         let result = ManualInfo::init_xqbase(conn);
         println!("ManualInfo::init_xqbase count: {}", result.unwrap());
     }
 
     #[test]
     #[ignore = "从12141个manual提取为historys后存入数据库。(9.61s)"]
-    fn test_models_init_xqbase_historys() {
-        let conn = &mut get_conn(&get_pool());
+    fn test_init_xqbase_historys() {
+        let conn = &mut get_conn();
         let result = HistoryData::init_xqbase(conn);
         println!("HistoryData::init_xqbase count: {}", result.unwrap());
     }
@@ -354,11 +358,11 @@ mod tests {
     #[test]
     #[ignore = "从数据库表提取为historys (0.89s), 后存入数据库 (9.08s-0.89s)"]
     fn test_models_historys() {
-        let conn = &mut get_conn(&get_pool());
-        let result = HistoryData::from_db(conn).unwrap();
-        println!("HistoryData::from_db count: {}", result.len());
+        let conn = &mut get_conn();
+        let history_datas = HistoryData::from_db(conn).unwrap();
+        println!("HistoryData::from_db count: {}", history_datas.len());
 
-        let result = HistoryData::save_db(conn, &result);
+        let result = HistoryData::save_db(conn, &history_datas);
         println!("HistoryData::save_db count: {}", result.unwrap());
     }
 }

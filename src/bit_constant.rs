@@ -801,7 +801,7 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "忽略：将全部常量输出至文本文件，以备核查。"]
+    #[ignore = "将全部常量输出至文本文件，以备核查。"]
     fn test_constant() {
         // zobrist
         let mut result = format!("zorbist_array:\n");
