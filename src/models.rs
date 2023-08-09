@@ -108,7 +108,8 @@ fn set_seq_zero(conn: &mut SqliteConnection, table: &str) {
 }
 
 impl HistoryData {
-    pub fn set_seq_zero(conn: &mut SqliteConnection) {
+    pub fn clear(conn: &mut SqliteConnection) {
+        let _ = diesel::delete(history::table).execute(conn);
         set_seq_zero(conn, "history");
     }
 
@@ -122,16 +123,14 @@ impl HistoryData {
         history::table.select(Self::as_select()).load::<Self>(conn)
     }
 
-    pub fn save_db(&self, conn: &mut SqlitePooledConnection) -> Result<usize, Error> {
+    pub fn save_db(conn: &mut SqliteConnection, selfs: &Vec<Self>) -> Result<usize, Error> {
+        HistoryData::clear(conn);
         diesel::insert_into(history::table)
-            .values(self)
+            .values(selfs)
             .execute(conn)
     }
 
     pub fn init_xqbase(conn: &mut SqliteConnection) -> Result<usize, Error> {
-        let _ = diesel::delete(history::table).execute(conn);
-        HistoryData::set_seq_zero(conn);
-
         let mut history_datas = vec![];
         let bit_board = crate::board::Board::new().bit_board();
         for info in ManualInfo::from_db(conn, "%")? {
@@ -142,13 +141,16 @@ impl HistoryData {
             }
         }
 
-        diesel::insert_into(history::table)
-            .values(history_datas)
-            .execute(conn)
+        Self::save_db(conn, &history_datas)
     }
 
-    pub fn from(key_value: (i64, i64, i32, i32, i32)) -> Self {
+    pub fn from(key_value: (u64, u64, usize, usize, usize)) -> Self {
         let (akey, lock, from_index, to_index, count) = key_value;
+        let akey = akey as i64;
+        let lock = lock as i64;
+        let from_index = from_index as i32;
+        let to_index = to_index as i32;
+        let count = count as i32;
         Self {
             akey,
             lock,
@@ -193,7 +195,8 @@ impl AspectData {
 }
 
 impl EvaluationData {
-    pub fn set_seq_zero(conn: &mut SqliteConnection) {
+    pub fn clear(conn: &mut SqliteConnection) {
+        let _ = diesel::delete(zorbist::table).execute(conn);
         set_seq_zero(conn, "evaluation");
     }
 
@@ -229,7 +232,8 @@ impl ManualInfo {
         }
     }
 
-    pub fn set_seq_zero(conn: &mut SqliteConnection) {
+    pub fn clear(conn: &mut SqliteConnection) {
+        let _ = diesel::delete(manual::table).execute(conn);
         set_seq_zero(conn, "manual");
     }
 
@@ -240,9 +244,7 @@ impl ManualInfo {
     }
 
     pub fn init_xqbase(conn: &mut SqliteConnection) -> Result<i64, Error> {
-        let _ = diesel::delete(manual::table).execute(conn);
-        ManualInfo::set_seq_zero(conn);
-
+        ManualInfo::clear(conn);
         let query = std::fs::read_to_string("insert_xqbase.sql").unwrap();
         let _ = conn.batch_execute(&query);
 
@@ -256,7 +258,7 @@ impl ManualInfo {
             .load::<Self>(conn)
     }
 
-    pub fn save_db(&self, conn: &mut SqlitePooledConnection) -> Result<usize, Error> {
+    pub fn save_db(&self, conn: &mut SqliteConnection) -> Result<usize, Error> {
         diesel::insert_into(manual::table)
             .values(self)
             .execute(conn)
@@ -331,5 +333,32 @@ mod tests {
 
         let count = ManualInfo::new().save_db(&mut conn).unwrap_or(0);
         println!("Saved : {:?}", count);
+    }
+
+    #[test]
+    #[ignore = "从insert_xqbase.sql文件提取SQL语句运行将12141个manual存入数据库。(神速！)"]
+    fn test_models_init_xqbase_manuals() {
+        let conn = &mut get_conn(&get_pool());
+        let result = ManualInfo::init_xqbase(conn);
+        println!("ManualInfo::init_xqbase count: {}", result.unwrap());
+    }
+
+    #[test]
+    #[ignore = "从12141个manual提取为historys后存入数据库。(9.61s)"]
+    fn test_models_init_xqbase_historys() {
+        let conn = &mut get_conn(&get_pool());
+        let result = HistoryData::init_xqbase(conn);
+        println!("HistoryData::init_xqbase count: {}", result.unwrap());
+    }
+
+    #[test]
+    #[ignore = "从数据库表提取为historys (0.89s), 后存入数据库 (9.08s-0.89s)"]
+    fn test_models_historys() {
+        let conn = &mut get_conn(&get_pool());
+        let result = HistoryData::from_db(conn).unwrap();
+        println!("HistoryData::from_db count: {}", result.len());
+
+        let result = HistoryData::save_db(conn, &result);
+        println!("HistoryData::save_db count: {}", result.unwrap());
     }
 }

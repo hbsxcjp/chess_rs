@@ -175,7 +175,7 @@ impl Zorbist {
         self.inner.len()
     }
 
-    pub fn insert(&mut self, id: u64, lock: u64, aspect: Aspect) {
+    fn insert(&mut self, id: u64, lock: u64, aspect: Aspect) {
         match self.get_mut_aspect_evaluation(id, lock) {
             Some(old_aspect) => old_aspect.append(aspect),
             None => {
@@ -271,8 +271,7 @@ impl Zorbist {
         evaluation_datas: Vec<EvaluationData>,
     ) -> Result<(usize, usize, usize), Error> {
         // Sqlite3 "PRAGMA foreign_keys = ON"
-        let _ = diesel::delete(zorbist::table).execute(conn)?;
-        EvaluationData::set_seq_zero(conn);
+        EvaluationData::clear(conn);
         let zor_count = diesel::insert_into(zorbist::table)
             .values(zorbist_datas)
             .execute(conn)?;
@@ -317,40 +316,41 @@ impl Zorbist {
         Self::save_to(conn, zorbist_datas, aspect_datas, evaluation_datas)
     }
 
-    pub fn save_db_from_manuals(
-        conn: &mut SqliteConnection,
-    ) -> Result<(usize, usize, usize), Error> {
-        // let mut zorbist = Zorbist::new();
-        let mut zorbist_datas = vec![];
-        let mut aspect_datas = vec![];
-        let mut evaluation_datas = vec![];
+    pub fn from_db_manuals(conn: &mut SqliteConnection) -> Result<Self, Error> {
+        let mut zorbist = Zorbist::new();
+        // let mut zorbist_datas = vec![];
+        // let mut aspect_datas = vec![];
+        // let mut evaluation_datas = vec![];
         let bit_board = crate::board::Board::new().bit_board();
         for info in ManualInfo::from_db(conn, "%")? {
             if let Some(rowcols) = info.rowcols {
-                let (mut zorbists, mut aspects, mut evaluations) =
-                    bit_board.clone().get_zor_asp_evals(rowcols);
-                zorbist_datas.append(&mut zorbists);
-                aspect_datas.append(&mut aspects);
-                evaluation_datas.append(&mut evaluations);
+                for (id, lock, aspect) in bit_board.clone().get_id_lock_asps(rowcols) {
+                    zorbist.insert(id, lock, aspect);
+                }
+                // zorbist_datas.append(&mut zorbists);
+                // aspect_datas.append(&mut aspects);
+                // evaluation_datas.append(&mut evaluations);
             }
         }
 
-        Self::save_to(conn, zorbist_datas, aspect_datas, evaluation_datas)
+        Ok(zorbist)
+        // Ok((zorbist_datas, aspect_datas, evaluation_datas))
+        // Self::save_to(conn, zorbist_datas, aspect_datas, evaluation_datas)
         // zorbist.save_db(conn)
     }
 
-    pub fn from_key_values(key_values: Vec<(u64, u64, i32, i32, i32)>) -> Self {
-        let mut zorbist = Self::new();
-        // zorbist.insert(id, lock, aspect_evaluation);
+    // pub fn from_key_values(key_values: Vec<(u64, u64, i32, i32, i32)>) -> Self {
+    //     let mut zorbist = Self::new();
+    //     // zorbist.insert(id, lock, aspect_evaluation);
 
-        zorbist
-    }
+    //     zorbist
+    // }
 
-    pub fn get_key_values(&self) -> Vec<(u64, u64, i32, i32, i32)> {
-        let mut result = vec![];
+    // pub fn get_key_values(&self) -> Vec<(u64, u64, i32, i32, i32)> {
+    //     let mut result = vec![];
 
-        result
-    }
+    //     result
+    // }
 
     pub fn to_string(&self) -> String {
         let mut result = String::new();
@@ -392,20 +392,24 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "从数据库直接提取zorbist"]
-    fn test_eval_from_db() {
+    #[ignore = "从数据库提取manuals后转换成zorbist. (4.25s)"]
+    fn test_eval_from_db_manuals() {
         let conn = &mut models::get_conn(&models::get_pool());
-        let zorbist = Zorbist::from_db(conn).unwrap();
-        println!("zorbist len: {}", zorbist.len());
-        let result = zorbist.to_string();
-        std::fs::write(format!("tests/output/zobrist_db.txt"), result).expect("Write Err.");
+        let zorbist = Zorbist::from_db_manuals(conn).unwrap();
+        println!("From_db_manuals: {}", (zorbist.len()));
+
+        // let result = zorbist.save_db(conn).expect("Save Err.");
+        // println!("Save_from_db zor_asp_eva: {:?}", result);
     }
 
     #[test]
-    #[ignore = "从数据库提取manuals后转换成zorbist，再存入数据库"]
-    fn test_eval_from_db_manuals() {
+    #[ignore = "从数据库提取manuals转换成的zorbist_datas再存入数据库. (25.89)"]
+    fn test_eval_save_db() {
         let conn = &mut models::get_conn(&models::get_pool());
-        let result = Zorbist::save_db_from_manuals(conn).unwrap();
+        let zorbist = Zorbist::from_db_manuals(conn).unwrap();
+        println!("From_db_manuals: {}", (zorbist.len()));
+
+        let result = zorbist.save_db(conn);
         println!("Save_from_db_manuals zor_asp_eva: {:?}", result);
 
         let man_count = models::ManualInfo::count(conn).unwrap();
@@ -417,5 +421,15 @@ mod tests {
             man_count,
             (zor_count, asp_count, eva_count)
         );
+    }
+
+    #[test]
+    #[ignore = "从数据库zorbist表直接提取zorbist. (6.77s)"]
+    fn test_eval_from_db() {
+        let conn = &mut models::get_conn(&models::get_pool());
+        let zorbist = Zorbist::from_db(conn).unwrap();
+        println!("zorbist len: {}", zorbist.len());
+        // let result = zorbist.to_string();
+        // std::fs::write(format!("tests/output/zobrist_db.txt"), result).expect("Write Err.");
     }
 }
