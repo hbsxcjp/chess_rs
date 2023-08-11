@@ -2,7 +2,7 @@
 
 use crate::board;
 // use diesel;
-use crate::schema::{self, aspect, evaluation, history, manual, zorbist};
+use crate::schema::{self, aspect, evaluation, manual, zorbist}; //, history
 use diesel::connection::SimpleConnection;
 use diesel::prelude::*;
 use diesel::r2d2::{ConnectionManager, Pool, PooledConnection};
@@ -20,16 +20,16 @@ pub type SqlitePooledConnection = PooledConnection<ConnectionManager<SqliteConne
 //     conn: Option<SqlitePooledConnection>,
 // }
 
-#[derive(Insertable, Queryable, Selectable)]
-#[diesel(table_name = history)]
-#[diesel(check_for_backend(diesel::sqlite::Sqlite))]
-pub struct HistoryData {
-    pub akey: i64,
-    pub lock: i64,
-    pub from_index: i32,
-    pub to_index: i32,
-    pub count: i32,
-}
+// #[derive(Insertable, Queryable, Selectable)]
+// #[diesel(table_name = history)]
+// #[diesel(check_for_backend(diesel::sqlite::Sqlite))]
+// pub struct HistoryData {
+//     pub akey: i64,
+//     pub lock: i64,
+//     pub from_index: i32,
+//     pub to_index: i32,
+//     pub count: i32,
+// }
 
 #[derive(Insertable, Queryable, Selectable)]
 #[diesel(table_name = zorbist)]
@@ -111,69 +111,69 @@ fn set_seq_zero(conn: &mut SqliteConnection, table: &str) {
     ));
 }
 
-impl HistoryData {
-    pub fn clear(conn: &mut SqliteConnection) {
-        let _ = diesel::delete(history::table).execute(conn);
-        set_seq_zero(conn, "history");
-    }
+// impl HistoryData {
+//     pub fn clear(conn: &mut SqliteConnection) {
+//         let _ = diesel::delete(history::table).execute(conn);
+//         set_seq_zero(conn, "history");
+//     }
 
-    pub fn count(conn: &mut SqliteConnection) -> Result<i64, Error> {
-        use diesel::dsl::count;
-        use schema::history::dsl::*;
-        history.select(count(id)).first::<i64>(conn)
-    }
+//     pub fn count(conn: &mut SqliteConnection) -> Result<i64, Error> {
+//         use diesel::dsl::count;
+//         use schema::history::dsl::*;
+//         history.select(count(id)).first::<i64>(conn)
+//     }
 
-    pub fn from_db(conn: &mut SqliteConnection) -> Result<Vec<Self>, Error> {
-        history::table.select(Self::as_select()).load::<Self>(conn)
-    }
+//     pub fn from_db(conn: &mut SqliteConnection) -> Result<Vec<Self>, Error> {
+//         history::table.select(Self::as_select()).load::<Self>(conn)
+//     }
 
-    pub fn save_db(conn: &mut SqliteConnection, history_datas: &Vec<Self>) -> Result<usize, Error> {
-        HistoryData::clear(conn);
-        diesel::insert_into(history::table)
-            .values(history_datas)
-            .execute(conn)
-    }
+//     pub fn save_db(conn: &mut SqliteConnection, history_datas: &Vec<Self>) -> Result<usize, Error> {
+//         HistoryData::clear(conn);
+//         diesel::insert_into(history::table)
+//             .values(history_datas)
+//             .execute(conn)
+//     }
 
-    pub fn init_xqbase(conn: &mut SqliteConnection) -> Result<usize, Error> {
-        let mut history_datas = vec![];
-        let bit_board = crate::board::Board::new().bit_board();
-        for info in ManualInfo::from_db(conn, "%")? {
-            if let Some(rowcols) = info.rowcols {
-                for key_value in bit_board.clone().get_key_values(rowcols) {
-                    history_datas.push(HistoryData::from(key_value));
-                }
-            }
-        }
+//     pub fn init_xqbase(conn: &mut SqliteConnection) -> Result<usize, Error> {
+//         let mut history_datas = vec![];
+//         let bit_board = crate::board::Board::new().bit_board();
+//         for info in ManualInfo::from_db(conn, "%")? {
+//             if let Some(rowcols) = info.rowcols {
+//                 for key_value in bit_board.clone().get_key_values(rowcols) {
+//                     history_datas.push(HistoryData::from(key_value));
+//                 }
+//             }
+//         }
 
-        Self::save_db(conn, &history_datas)
-    }
+//         Self::save_db(conn, &history_datas)
+//     }
 
-    pub fn from(key_value: (u64, u64, usize, usize, usize)) -> Self {
-        let (akey, lock, from_index, to_index, count) = key_value;
-        let akey = akey as i64;
-        let lock = lock as i64;
-        let from_index = from_index as i32;
-        let to_index = to_index as i32;
-        let count = count as i32;
-        Self {
-            akey,
-            lock,
-            from_index,
-            to_index,
-            count,
-        }
-    }
+//     pub fn from(key_value: (u64, u64, usize, usize, usize)) -> Self {
+//         let (akey, lock, from_index, to_index, count) = key_value;
+//         let akey = akey as i64;
+//         let lock = lock as i64;
+//         let from_index = from_index as i32;
+//         let to_index = to_index as i32;
+//         let count = count as i32;
+//         Self {
+//             akey,
+//             lock,
+//             from_index,
+//             to_index,
+//             count,
+//         }
+//     }
 
-    pub fn get_key_value(&self) -> (i64, i64, i32, i32, i32) {
-        (
-            self.akey,
-            self.lock,
-            self.from_index,
-            self.to_index,
-            self.count,
-        )
-    }
-}
+//     pub fn get_key_value(&self) -> (i64, i64, i32, i32, i32) {
+//         (
+//             self.akey,
+//             self.lock,
+//             self.from_index,
+//             self.to_index,
+//             self.count,
+//         )
+//     }
+// }
 
 impl ZorbistData {
     pub fn count(conn: &mut SqliteConnection) -> Result<i64, Error> {
@@ -268,6 +268,12 @@ impl ManualInfo {
             .execute(conn)
     }
 
+    pub fn get_rowcols(conn: &mut SqliteConnection) -> Result<Vec<Option<String>>, Error> {
+        // use diesel::dsl::max;
+        use schema::manual::dsl::*;
+        manual.select(rowcols.as_sql()).load::<Option<String>>(conn)
+    }
+
     pub fn from(key_values: Vec<(String, String)>) -> Self {
         let mut info = Self::new();
         for (key, value) in key_values {
@@ -347,22 +353,22 @@ mod tests {
         println!("ManualInfo::init_xqbase count: {}", result.unwrap());
     }
 
-    #[test]
-    #[ignore = "从12141个manual提取为historys后存入数据库。(9.61s)"]
-    fn test_init_xqbase_historys() {
-        let conn = &mut get_conn();
-        let result = HistoryData::init_xqbase(conn);
-        println!("HistoryData::init_xqbase count: {}", result.unwrap());
-    }
+    // #[test]
+    // #[ignore = "从12141个manual提取为historys后存入数据库。(9.61s)"]
+    // fn test_init_xqbase_historys() {
+    //     let conn = &mut get_conn();
+    //     let result = HistoryData::init_xqbase(conn);
+    //     println!("HistoryData::init_xqbase count: {}", result.unwrap());
+    // }
 
-    #[test]
-    #[ignore = "从数据库表提取为historys (0.89s), 后存入数据库 (9.08s-0.89s)"]
-    fn test_models_historys() {
-        let conn = &mut get_conn();
-        let history_datas = HistoryData::from_db(conn).unwrap();
-        println!("HistoryData::from_db count: {}", history_datas.len());
+    // #[test]
+    // #[ignore = "从数据库表提取为historys (0.89s), 后存入数据库 (9.08s-0.89s)"]
+    // fn test_models_historys() {
+    //     let conn = &mut get_conn();
+    //     let history_datas = HistoryData::from_db(conn).unwrap();
+    //     println!("HistoryData::from_db count: {}", history_datas.len());
 
-        let result = HistoryData::save_db(conn, &history_datas);
-        println!("HistoryData::save_db count: {}", result.unwrap());
-    }
+    //     let result = HistoryData::save_db(conn, &history_datas);
+    //     println!("HistoryData::save_db count: {}", result.unwrap());
+    // }
 }

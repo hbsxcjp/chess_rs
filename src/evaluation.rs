@@ -3,9 +3,9 @@
 
 // use serde_derive::{Deserialize, Serialize};
 // use std::cell::RefCell;
-use crate::models::{self, AspectData, EvaluationData, ManualInfo, ZorbistData};
-use crate::schema::{aspect, evaluation, zorbist};
-use diesel::prelude::*;
+use crate::models::ManualInfo; //AspectData, EvaluationData,, ZorbistData
+                               // use crate::schema::{aspect, evaluation, zorbist};
+                               // use diesel::prelude::*;
 use diesel::result::Error;
 use diesel::sqlite::SqliteConnection;
 use std::collections::HashMap;
@@ -238,89 +238,91 @@ impl Zorbist {
         Some(real_key)
     }
 
-    pub fn from_db(conn: &mut SqliteConnection) -> Result<Self, Error> {
-        let eva_asp_zor: Vec<(EvaluationData, AspectData, ZorbistData)> = evaluation::table
-            .inner_join(aspect::table.inner_join(zorbist::table))
-            .select((
-                EvaluationData::as_select(),
-                AspectData::as_select(),
-                ZorbistData::as_select(),
-            ))
-            .load::<(EvaluationData, AspectData, ZorbistData)>(conn)?;
+    // pub fn from_db(conn: &mut SqliteConnection) -> Result<Self, Error> {
+    //     let eva_asp_zor: Vec<(EvaluationData, AspectData, ZorbistData)> = evaluation::table
+    //         .inner_join(aspect::table.inner_join(zorbist::table))
+    //         .select((
+    //             EvaluationData::as_select(),
+    //             AspectData::as_select(),
+    //             ZorbistData::as_select(),
+    //         ))
+    //         .load::<(EvaluationData, AspectData, ZorbistData)>(conn)?;
 
-        let mut zorbist = Self::new();
-        for (eva, asp, zor) in eva_asp_zor {
-            zorbist.insert(
-                zor.id as u64,
-                zor.lock as u64,
-                Aspect::from(
-                    asp.from_index as usize,
-                    ToIndex::from(eva.to_index as usize, Evaluation::from(eva.count as usize)),
-                ),
-            );
-        }
+    //     let mut zorbist = Self::new();
+    //     for (eva, asp, zor) in eva_asp_zor {
+    //         zorbist.insert(
+    //             zor.id as u64,
+    //             zor.lock as u64,
+    //             Aspect::from(
+    //                 asp.from_index as usize,
+    //                 ToIndex::from(eva.to_index as usize, Evaluation::from(eva.count as usize)),
+    //             ),
+    //         );
+    //     }
 
-        Ok(zorbist)
-    }
+    //     Ok(zorbist)
+    // }
 
-    // 每次全新保存数据
-    fn save_to(
-        conn: &mut SqliteConnection,
-        zorbist_datas: Vec<ZorbistData>,
-        aspect_datas: Vec<AspectData>,
-        evaluation_datas: Vec<EvaluationData>,
-    ) -> Result<(usize, usize, usize), Error> {
-        // Sqlite3 "PRAGMA foreign_keys = ON"
-        EvaluationData::clear(conn);
-        let zor_count = diesel::insert_into(zorbist::table)
-            .values(zorbist_datas)
-            .execute(conn)?;
-        let asp_count = diesel::insert_into(aspect::table)
-            .values(aspect_datas)
-            .execute(conn)?;
-        let eva_count = diesel::insert_into(evaluation::table)
-            .values(evaluation_datas)
-            .execute(conn)?;
+    // // 每次全新保存数据
+    // fn save_to(
+    //     conn: &mut SqliteConnection,
+    //     zorbist_datas: &Vec<ZorbistData>,
+    //     aspect_datas: &Vec<AspectData>,
+    //     evaluation_datas: &Vec<EvaluationData>,
+    // ) -> Result<(usize, usize, usize), Error> {
+    //     // Sqlite3 "PRAGMA foreign_keys = ON"
+    //     EvaluationData::clear(conn);
+    //     let zor_count = diesel::insert_into(zorbist::table)
+    //         .values(zorbist_datas)
+    //         .execute(conn)?;
+    //     let asp_count = diesel::insert_into(aspect::table)
+    //         .values(aspect_datas)
+    //         .execute(conn)?;
+    //     let eva_count = diesel::insert_into(evaluation::table)
+    //         .values(evaluation_datas)
+    //         .execute(conn)?;
 
-        Ok((zor_count, asp_count, eva_count))
-    }
+    //     Ok((zor_count, asp_count, eva_count))
+    // }
 
-    pub fn save_db(&self, conn: &mut SqliteConnection) -> Result<(usize, usize, usize), Error> {
-        let mut zorbist_datas = vec![];
-        let mut aspect_datas = vec![];
-        let mut evaluation_datas = vec![];
-        let mut aspect_id = 0;
-        for (id, (lock, aspect)) in self.inner.iter() {
-            let id = *id as i64;
-            let lock = *lock as i64;
-            zorbist_datas.push(ZorbistData { id, lock });
-            for (from_index, to_index_eval) in aspect.inner.iter() {
-                let from_index = *from_index as i32;
-                aspect_id += 1;
-                aspect_datas.push(AspectData {
-                    id: aspect_id,
-                    from_index,
-                    zorbist_id: id,
-                });
-                for (to_index, eval) in to_index_eval.inner.iter() {
-                    let to_index = *to_index as i32;
-                    evaluation_datas.push(EvaluationData {
-                        to_index,
-                        count: eval.count as i32,
-                        aspect_id,
-                    });
-                }
-            }
-        }
+    // pub fn save_db(&self, conn: &mut SqliteConnection) -> Result<(usize, usize, usize), Error> {
+    //     let mut zorbist_datas = vec![];
+    //     let mut aspect_datas = vec![];
+    //     let mut evaluation_datas = vec![];
+    //     let mut aspect_id = 0;
+    //     for (id, (lock, aspect)) in self.inner.iter() {
+    //         let id = *id as i64;
+    //         let lock = *lock as i64;
+    //         zorbist_datas.push(ZorbistData { id, lock });
+    //         for (from_index, to_index_eval) in aspect.inner.iter() {
+    //             let from_index = *from_index as i32;
+    //             aspect_id += 1;
+    //             aspect_datas.push(AspectData {
+    //                 id: aspect_id,
+    //                 from_index,
+    //                 zorbist_id: id,
+    //             });
+    //             for (to_index, eval) in to_index_eval.inner.iter() {
+    //                 let to_index = *to_index as i32;
+    //                 evaluation_datas.push(EvaluationData {
+    //                     to_index,
+    //                     count: eval.count as i32,
+    //                     aspect_id,
+    //                 });
+    //             }
+    //         }
+    //     }
 
-        Self::save_to(conn, zorbist_datas, aspect_datas, evaluation_datas)
-    }
+    //     Self::save_to(conn, &zorbist_datas, &aspect_datas, &evaluation_datas)
+    // }
 
     pub fn from_db_manuals(conn: &mut SqliteConnection) -> Result<Self, Error> {
         let mut zorbist = Zorbist::new();
         let bit_board = crate::board::Board::new().bit_board();
-        for info in ManualInfo::from_db(conn, "%")? {
-            if let Some(rowcols) = info.rowcols {
+        // for info in ManualInfo::from_db(conn, "%")? {
+        for rowcols in ManualInfo::get_rowcols(conn)? {
+            // if let Some(rowcols) = info.rowcols {
+            if let Some(rowcols) = rowcols {
                 for (id, lock, aspect) in bit_board.clone().get_id_lock_asps(rowcols) {
                     zorbist.insert(id, lock, aspect);
                 }
@@ -330,43 +332,43 @@ impl Zorbist {
         Ok(zorbist)
     }
 
-    pub fn from_history_datas(history_datas: &Vec<models::HistoryData>) -> Self {
-        let mut zorbist = Self::new();
-        for history_data in history_datas {
-            zorbist.insert(
-                history_data.akey as u64,
-                history_data.lock as u64,
-                Aspect::from(
-                    history_data.from_index as usize,
-                    ToIndex::from(
-                        history_data.to_index as usize,
-                        Evaluation::from(history_data.count as usize),
-                    ),
-                ),
-            );
-        }
+    // pub fn from_history_datas(history_datas: &Vec<models::HistoryData>) -> Self {
+    //     let mut zorbist = Self::new();
+    //     for history_data in history_datas {
+    //         zorbist.insert(
+    //             history_data.akey as u64,
+    //             history_data.lock as u64,
+    //             Aspect::from(
+    //                 history_data.from_index as usize,
+    //                 ToIndex::from(
+    //                     history_data.to_index as usize,
+    //                     Evaluation::from(history_data.count as usize),
+    //                 ),
+    //             ),
+    //         );
+    //     }
 
-        zorbist
-    }
+    //     zorbist
+    // }
 
-    pub fn get_history_datas(&self) -> Vec<models::HistoryData> {
-        let mut history_datas = vec![];
-        for (akey, (lock, aspect)) in self.inner.iter() {
-            for (from_index, to_index_eval) in aspect.inner.iter() {
-                for (to_index, eval) in to_index_eval.inner.iter() {
-                    history_datas.push(models::HistoryData::from((
-                        *akey,
-                        *lock,
-                        *from_index,
-                        *to_index,
-                        eval.count,
-                    )));
-                }
-            }
-        }
+    // pub fn get_history_datas(&self) -> Vec<models::HistoryData> {
+    //     let mut history_datas = vec![];
+    //     for (akey, (lock, aspect)) in self.inner.iter() {
+    //         for (from_index, to_index_eval) in aspect.inner.iter() {
+    //             for (to_index, eval) in to_index_eval.inner.iter() {
+    //                 history_datas.push(models::HistoryData::from((
+    //                     *akey,
+    //                     *lock,
+    //                     *from_index,
+    //                     *to_index,
+    //                     eval.count,
+    //                 )));
+    //             }
+    //         }
+    //     }
 
-        history_datas
-    }
+    //     history_datas
+    // }
 
     pub fn to_string(&self) -> String {
         let mut result = String::new();
@@ -402,9 +404,9 @@ mod tests {
         let result = zorbist.to_string();
         std::fs::write(format!("tests/output/zobrist_file.txt"), result).expect("Write Err.");
 
-        let conn = &mut models::get_conn();
-        let result = zorbist.save_db(conn).expect("Save Err.");
-        println!("Save_from_file zor_asp_eva: {:?}", result);
+        // let conn = &mut models::get_conn();
+        // let result = zorbist.save_db(conn).expect("Save Err.");
+        // println!("Save_from_file zor_asp_eva: {:?}", result);
     }
 
     #[test]
@@ -415,45 +417,45 @@ mod tests {
         println!("From_db_manuals: {}", (zorbist.len()));
     }
 
-    #[test]
-    #[ignore = "从数据库提取manuals转换成的zorbist_datas再存入数据库. (25.89)"]
-    fn test_eval_save_db() {
-        let conn = &mut models::get_conn();
-        let zorbist = Zorbist::from_db_manuals(conn).unwrap();
-        println!("From_db_manuals: {}", (zorbist.len()));
+    // #[test]
+    // #[ignore = "从数据库提取manuals转换成的zorbist_datas再存入数据库. (25.89)"]
+    // fn test_eval_save_db() {
+    //     let conn = &mut models::get_conn();
+    //     let zorbist = Zorbist::from_db_manuals(conn).unwrap();
+    //     println!("From_db_manuals: {}", (zorbist.len()));
 
-        let result = zorbist.save_db(conn);
-        println!("Save_from_db_manuals zor_asp_eva: {:?}", result);
+    //     let result = zorbist.save_db(conn);
+    //     println!("Save_from_db_manuals zor_asp_eva: {:?}", result);
 
-        let man_count = models::ManualInfo::count(conn).unwrap();
-        let zor_count = models::ZorbistData::count(conn).unwrap();
-        let asp_count = models::AspectData::count(conn).unwrap();
-        let eva_count = models::EvaluationData::count(conn).unwrap();
-        println!(
-            "manual_info count: {} zor_asp_eva: {:?}",
-            man_count,
-            (zor_count, asp_count, eva_count)
-        );
-    }
+    //     let man_count = models::ManualInfo::count(conn).unwrap();
+    //     let zor_count = models::ZorbistData::count(conn).unwrap();
+    //     let asp_count = models::AspectData::count(conn).unwrap();
+    //     let eva_count = models::EvaluationData::count(conn).unwrap();
+    //     println!(
+    //         "manual_info count: {} zor_asp_eva: {:?}",
+    //         man_count,
+    //         (zor_count, asp_count, eva_count)
+    //     );
+    // }
 
-    #[test]
-    #[ignore = "从数据库zorbist表直接提取zorbist. (8,63s)"]
-    fn test_eval_from_db() {
-        let conn = &mut models::get_conn();
-        let zorbist = Zorbist::from_db(conn).unwrap();
-        println!("zorbist len: {}", zorbist.len());
-    }
+    // #[test]
+    // #[ignore = "从数据库zorbist表直接提取zorbist. (5.75s-8,63s)"]
+    // fn test_eval_from_db() {
+    //     let conn = &mut models::get_conn();
+    //     let zorbist = Zorbist::from_db(conn).unwrap();
+    //     println!("zorbist len: {}", zorbist.len());
+    // }
 
-    #[test]
-    #[ignore = "从数据表提取history_datas(2.12s), 转换为zorbist(4.22s), 存入数据库(12.52s). (18.86s)"]
-    fn test_eval_from_db_history() {
-        let conn = &mut models::get_conn();
-        let history_datas = models::HistoryData::from_db(conn).unwrap();
-        let zorbist = Zorbist::from_history_datas(&history_datas);
-        println!("zorbist len: {}", zorbist.len());
+    // #[test]
+    // #[ignore = "从数据表提取history_datas(2.12s), 转换为zorbist(4.22s), 再存入数据库(12.52s). (8.67s-18.86s)"]
+    // fn test_eval_from_db_history() {
+    //     let conn = &mut models::get_conn();
+    //     let history_datas = models::HistoryData::from_db(conn).unwrap();
+    //     let zorbist = Zorbist::from_history_datas(&history_datas);
+    //     println!("zorbist len: {}", zorbist.len());
 
-        let history_datas = zorbist.get_history_datas();
-        let _ = models::HistoryData::save_db(conn, &history_datas);
-        println!("history_datas len: {}", history_datas.len());
-    }
+    //     let history_datas = zorbist.get_history_datas();
+    //     let _ = models::HistoryData::save_db(conn, &history_datas);
+    //     println!("history_datas len: {}", history_datas.len());
+    // }
 }
