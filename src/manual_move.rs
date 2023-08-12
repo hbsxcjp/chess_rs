@@ -305,7 +305,9 @@ impl ManualMove {
         let mut zorbist = evaluation::Zorbist::new();
         for amove in self.get_all_after_moves() {
             let mut bit_board = self.board.to_move(&amove, false).bit_board();
-            zorbist.append(bit_board.get_zorbist_amove(&amove));
+            if let Some((key, aspect)) = bit_board.get_key_asp_amove(&amove) {
+                zorbist.insert(key, aspect);
+            }
         }
 
         zorbist

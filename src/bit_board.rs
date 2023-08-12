@@ -7,7 +7,7 @@ use crate::board;
 use crate::coord::{
     self, COLCOUNT, COLSTATECOUNT, LEGSTATECOUNT, ROWCOUNT, ROWSTATECOUNT, SEATCOUNT, SIDECOUNT,
 };
-use crate::evaluation;
+use crate::evaluation::*;
 use crate::manual;
 use crate::manual_move;
 use crate::models;
@@ -15,7 +15,7 @@ use crate::piece::{self, COLORCOUNT, KINDCOUNT};
 use std::rc::Rc;
 
 type GetEvaluation =
-    fn(&BitBoard, from_to_index: (usize, usize), eat_kind: piece::Kind) -> evaluation::Evaluation;
+    fn(&BitBoard, from_to_index: (usize, usize), eat_kind: piece::Kind) -> Evaluation;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct BitBoard {
@@ -30,8 +30,12 @@ pub struct BitBoard {
 }
 
 impl BitBoard {
-    pub fn new(pieces: &board::Pieces) -> BitBoard {
-        let mut bit_board: BitBoard = BitBoard {
+    pub fn new() -> Self {
+        board::Board::new().bit_board()
+    }
+
+    pub fn from(pieces: &board::Pieces) -> Self {
+        let mut bit_board = Self {
             bottom_color: board::get_bottom_color(pieces),
             bit_pieces: [[0; KINDCOUNT]; COLORCOUNT],
 
@@ -63,10 +67,6 @@ impl BitBoard {
         } else {
             None
         }
-    }
-
-    pub fn get_key_lock(&self, color: piece::Color) -> (u64, u64) {
-        (self.get_key(color), self.get_lock(color))
     }
 
     fn get_kind(&self, index: usize) -> piece::Kind {
@@ -254,7 +254,7 @@ impl BitBoard {
         &self,
         from_to_index: (usize, usize),
         eat_kind: piece::Kind,
-    ) -> evaluation::Evaluation {
+    ) -> Evaluation {
         let (_, to_index) = from_to_index;
         // 如是对方将帅的位置则直接可走，不用判断是否被将军（如加以判断，则会直接走棋吃将帅）；棋子已走，取终点位置颜色
         let is_killed =
@@ -262,7 +262,7 @@ impl BitBoard {
         let count = if is_killed { 0 } else { 1 };
         // 扩展，增加其他功能
 
-        evaluation::Evaluation::from(count)
+        Evaluation::from(count)
     }
 
     // 执行某一着后回退（保持原局面不变）
@@ -270,7 +270,7 @@ impl BitBoard {
         &mut self,
         from_to_index: (usize, usize),
         get_evaluation: GetEvaluation,
-    ) -> Option<evaluation::Evaluation> {
+    ) -> Option<Evaluation> {
         let (from_index, to_index) = from_to_index;
         let eat_kind = self.do_move(from_index, to_index)?;
         let evaluation = get_evaluation(self, from_to_index, eat_kind);
@@ -280,39 +280,40 @@ impl BitBoard {
         Some(evaluation)
     }
 
-    fn get_aspect_index(&mut self, from_index: usize) -> evaluation::Aspect {
-        let mut aspect = evaluation::Aspect::from(from_index, evaluation::ToIndex::new());
-        for to_index in bit_constant::get_indexs_from_bitatom(self.get_move_from_index(from_index))
-        {
-            if let Some(evaluation) = self
-                .get_eval_by_do_move_undo((from_index, to_index), Self::get_evaluation_is_killed)
-            {
-                aspect.insert(from_index, evaluation::ToIndex::from(to_index, evaluation));
-            }
-        }
-
-        aspect
-    }
-
-    fn get_aspect_bitatom(&mut self, bit_atom: bit_constant::BitAtom) -> evaluation::Aspect {
-        let mut aspect = evaluation::Aspect::new();
+    fn get_aspect_bitatom(
+        &mut self,
+        color: piece::Color,
+        bit_atom: bit_constant::BitAtom,
+    ) -> Aspect {
+        let mut aspect = Aspect::new(self.get_lock(color));
         for from_index in bit_constant::get_indexs_from_bitatom(bit_atom) {
-            aspect.append(self.get_aspect_index(from_index));
+            let mut to_indexs = vec![];
+            for to_index in
+                bit_constant::get_indexs_from_bitatom(self.get_move_from_index(from_index))
+            {
+                if let Some(eval) = self.get_eval_by_do_move_undo(
+                    (from_index, to_index),
+                    Self::get_evaluation_is_killed,
+                ) {
+                    to_indexs.push(ToIndex::from(to_index, eval));
+                }
+            }
+
+            aspect.insert(FromIndex::from(from_index, to_indexs));
         }
 
         aspect
     }
 
     // kind == piece::Kind::NoKind，取全部种类棋子
-    fn get_aspect_color_kind(
-        &mut self,
-        color: piece::Color,
-        kind: piece::Kind,
-    ) -> evaluation::Aspect {
-        self.get_aspect_bitatom(match kind {
-            piece::Kind::NoKind => self.color_pieces(color),
-            _ => self.bit_pieces[color as usize][kind as usize],
-        })
+    fn get_aspect_color_kind(&mut self, color: piece::Color, kind: piece::Kind) -> Aspect {
+        self.get_aspect_bitatom(
+            color,
+            match kind {
+                piece::Kind::NoKind => self.color_pieces(color),
+                _ => self.bit_pieces[color as usize][kind as usize],
+            },
+        )
     }
 
     fn get_key(&self, color: piece::Color) -> u64 {
@@ -323,85 +324,35 @@ impl BitBoard {
         self.lock ^ bit_constant::COLORZOBRISTLOCK[color as usize]
     }
 
-    fn get_zorbist(&self, color: piece::Color, aspect: evaluation::Aspect) -> evaluation::Zorbist {
-        evaluation::Zorbist::from(self.get_key(color), self.get_lock(color), aspect)
-    }
-
-    pub fn get_zorbist_color(&mut self, color: piece::Color) -> evaluation::Zorbist {
+    pub fn get_zorbist_color(&mut self, color: piece::Color) -> Zorbist {
         let aspect = self.get_aspect_color_kind(color, piece::Kind::NoKind);
-        self.get_zorbist(color, aspect)
+        Zorbist::from(self.get_key(color), aspect)
     }
 
-    pub fn get_zorbist_amove(&mut self, amove: &Rc<amove::Move>) -> evaluation::Zorbist {
+    pub fn get_key_asp_amove(&mut self, amove: &Rc<amove::Move>) -> Option<(u64, Aspect)> {
         let (from_index, to_index) = amove.coordpair.from_to_index();
         let color = self.get_color(from_index).unwrap();
-        let mut aspect = evaluation::Aspect::new();
-        if let Some(evaluation) =
-            self.get_eval_by_do_move_undo((from_index, to_index), Self::get_evaluation_is_killed)
-        {
-            aspect.insert(from_index, evaluation::ToIndex::from(to_index, evaluation));
-        }
+        let eval =
+            self.get_eval_by_do_move_undo((from_index, to_index), Self::get_evaluation_is_killed)?;
 
-        self.get_zorbist(color, aspect)
+        Some((
+            self.get_key(color),
+            Aspect::from(self.get_lock(color), from_index, to_index, eval),
+        ))
     }
 
-    pub fn get_key_values(&mut self, rowcols: String) -> Vec<(u64, u64, usize, usize, usize)> {
-        let mut key_values = vec![];
+    pub fn insert_to_zorbist(&mut self, zorbist: &mut Zorbist, rowcols: String) {
         let mut color = piece::Color::Red;
         for coordpair in manual_move::ManualMove::get_coordpairs_from_rowcols(&rowcols).unwrap() {
-            let (from_index, to_index) = coordpair.from_to_index();
-            let key = self.get_key(color); // as i64;
-            let lock = self.get_lock(color); // as i64;
-            if self.do_move(from_index, to_index).is_some() {
-                // let from_index = from_index as i32;
-                // let to_index = to_index as i32;
-                key_values.push((key, lock, from_index, to_index, 1));
-            }
-
-            color = piece::other_color(color);
-        }
-
-        key_values
-    }
-
-    pub fn get_id_lock_asps(&mut self, rowcols: String) -> Vec<(u64, u64, evaluation::Aspect)> {
-        let mut id_lock_asps = vec![];
-        // let mut zorbist_datas = vec![];
-        // let mut aspect_datas = vec![];
-        // let mut evaluation_datas = vec![];
-        // let mut aspect_id = 0;
-        let mut color = piece::Color::Red;
-        for coordpair in manual_move::ManualMove::get_coordpairs_from_rowcols(&rowcols).unwrap() {
-            let (from_index, to_index) = coordpair.from_to_index();
-            let id = self.get_key(color);
+            let (from, to) = coordpair.from_to_index();
+            let key = self.get_key(color);
             let lock = self.get_lock(color);
-            if self.do_move(from_index, to_index).is_some() {
-                // aspect_id += 1;
-                let aspect = evaluation::Aspect::from(
-                    from_index,
-                    evaluation::ToIndex::from(to_index, evaluation::Evaluation::from(1)),
-                );
-                id_lock_asps.push((id, lock, aspect));
-                // let from_index = from_index as i32;
-                // let to_index = to_index as i32;
-                // zorbist_datas.push(models::ZorbistData { id, lock });
-                // aspect_datas.push(models::AspectData {
-                //     id: aspect_id,
-                //     from_index,
-                //     zorbist_id: id,
-                // });
-                // evaluation_datas.push(models::EvaluationData {
-                //     to_index,
-                //     count: 1,
-                //     aspect_id,
-                // });
+            if self.do_move(from, to).is_some() {
+                zorbist.insert(key, Aspect::from(lock, from, to, Evaluation::from(1)));
             }
 
             color = piece::other_color(color);
         }
-
-        id_lock_asps
-        // (zorbist_datas, aspect_datas, evaluation_datas)
     }
 
     pub fn to_string(&mut self) -> String {
@@ -473,20 +424,20 @@ mod tests {
     use super::*;
 
     #[test]
-    #[ignore = "界面显示bit_board"]
+    // #[ignore = "界面显示bit_board"]
     fn test_bit_board() {
         for (fen, board_string) in common::FEN_BOARD_STRINGS {
-            let mut bit_board = BitBoard::new(&board::fen_to_pieces(fen));
+            let mut bit_board = BitBoard::from(&board::fen_to_pieces(fen));
             let mut result = bit_board.to_string();
 
             assert_eq!(board_string, result);
 
             // // 可变借用
             fn to_aspect_string(bit_board: &mut BitBoard) -> String {
-                let mut result = format!("aspect_string:\n");
+                let mut result = format!("zorbist_string:\n");
                 for color in [piece::Color::Red, piece::Color::Black] {
                     let zorbist = bit_board.get_zorbist_color(color);
-                    result.push_str(&zorbist.to_string());
+                    result.push_str(&format!("{}", zorbist));
                 }
 
                 result

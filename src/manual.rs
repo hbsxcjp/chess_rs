@@ -24,12 +24,12 @@ pub fn get_fen(info: &models::ManualInfo) -> &str {
 }
 
 pub fn get_zorbist_manuals(manuals: Vec<Manual>) -> evaluation::Zorbist {
-    let mut zorbist = evaluation::Zorbist::new();
+    let mut result = evaluation::Zorbist::new();
     for manual in manuals {
-        zorbist.append(manual.manual_move.get_zorbist());
+        result.append(manual.manual_move.get_zorbist());
     }
 
-    zorbist
+    result
 }
 
 #[derive(Debug)]

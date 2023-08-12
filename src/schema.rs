@@ -1,23 +1,6 @@
 // @generated automatically by Diesel CLI.
 
 diesel::table! {
-    aspect (id) {
-        id -> Integer,
-        from_index -> Integer,
-        zorbist_id -> BigInt,
-    }
-}
-
-diesel::table! {
-    evaluation (id) {
-        id -> Integer,
-        to_index -> Integer,
-        count -> Integer,
-        aspect_id -> Integer,
-    }
-}
-
-diesel::table! {
     manual (id) {
         id -> Integer,
         source -> Nullable<Text>,
@@ -40,20 +23,3 @@ diesel::table! {
         movestring -> Nullable<Text>,
     }
 }
-
-diesel::table! {
-    zorbist (id) {
-        id -> BigInt,
-        lock -> BigInt,
-    }
-}
-
-diesel::joinable!(aspect -> zorbist (zorbist_id));
-diesel::joinable!(evaluation -> aspect (aspect_id));
-
-diesel::allow_tables_to_appear_in_same_query!(
-    aspect,
-    evaluation,
-    manual,
-    zorbist,
-);

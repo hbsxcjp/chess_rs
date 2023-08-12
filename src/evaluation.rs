@@ -3,155 +3,270 @@
 
 // use serde_derive::{Deserialize, Serialize};
 // use std::cell::RefCell;
-use crate::models::ManualInfo; //AspectData, EvaluationData,, ZorbistData
-                               // use crate::schema::{aspect, evaluation, zorbist};
-                               // use diesel::prelude::*;
+// use rayon::vec;
+use crate::models::ManualInfo;
+use crate::{bit_board, bit_constant, coord};
 use diesel::result::Error;
 use diesel::sqlite::SqliteConnection;
+use std::cmp::Ordering;
 use std::collections::HashMap;
+use std::fmt::{Display, Formatter}; //coord,
 
-use crate::{bit_board, bit_constant, coord, piece};
-
-#[derive(Debug)]
+#[derive(Clone, Copy)]
 pub struct Evaluation {
     count: usize,
 }
 
-// to_index->Evaluation
-#[derive(Debug)]
+// #[derive(Debug)]
 pub struct ToIndex {
-    inner: HashMap<usize, Evaluation>,
-}
-
-// from_index->IndexEvaluation
-#[derive(Debug)]
-pub struct Aspect {
-    inner: HashMap<usize, ToIndex>,
+    to: usize,
+    eval: Evaluation,
 }
 
 // #[derive(Debug)]
-#[derive(Debug)]
-pub struct Zorbist {
-    inner: HashMap<u64, (u64, Aspect)>,
+pub struct FromIndex {
+    from: usize,
+    to_indexs: Vec<ToIndex>,
 }
+
+// #[derive(Debug)]
+pub struct Aspect {
+    lock: u64,
+    from_indexs: Vec<FromIndex>,
+}
+
+// #[derive(Debug)]
+pub struct Zorbist {
+    key_aspects: HashMap<u64, Aspect>,
+}
+
+pub struct FromToIndex {
+    from: usize,
+    to: usize,
+    eval: Evaluation,
+}
+
+impl Display for Evaluation {
+    fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
+        write!(f, "{}", self.count)
+    }
+}
+
+impl Display for ToIndex {
+    fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
+        let coord = coord::Coord::from_index(self.to).unwrap();
+        write!(f, "{}={}", coord, self.eval)
+    }
+}
+
+impl Display for FromIndex {
+    fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
+        let coord = coord::Coord::from_index(self.from).unwrap();
+        let _ = write!(f, "{}->[", coord)?;
+        for to_index in &self.to_indexs {
+            let _ = write!(f, "{} ", to_index)?;
+        }
+        let _ = write!(f, "]【{}】\n", self.to_indexs.len())?;
+
+        Ok(())
+    }
+}
+
+impl Display for FromToIndex {
+    fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
+        let from_coord = coord::Coord::from_index(self.from).unwrap();
+        let to_coord = coord::Coord::from_index(self.to).unwrap();
+
+        write!(f, "{}->{}={}", from_coord, to_coord, self.eval)
+    }
+}
+
+impl Display for Aspect {
+    fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
+        let _ = write!(f, "lock:{:016X}\n", self.lock)?;
+        for from_index in &self.from_indexs {
+            let _ = write!(f, "{}", from_index)?;
+        }
+        let _ = write!(f, "count: 【{}】\n", self.from_indexs.len())?;
+
+        Ok(())
+    }
+}
+
+impl Display for Zorbist {
+    fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
+        for (key, aspect) in &self.key_aspects {
+            let _ = write!(f, "key:{:016X} {}", key, aspect)?;
+        }
+        let _ = write!(f, "zorbist count: 【{}】\n\n", self.key_aspects.len())?;
+
+        Ok(())
+    }
+}
+
+impl Ord for Evaluation {
+    fn cmp(&self, other: &Self) -> Ordering {
+        other.count.cmp(&self.count)
+    }
+}
+
+impl PartialOrd for Evaluation {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl PartialEq for Evaluation {
+    fn eq(&self, other: &Self) -> bool {
+        self.count == other.count
+    }
+}
+
+impl Eq for Evaluation {}
+
+impl Ord for ToIndex {
+    fn cmp(&self, other: &Self) -> Ordering {
+        self.to.cmp(&other.to)
+    }
+}
+
+impl PartialOrd for ToIndex {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl PartialEq for ToIndex {
+    fn eq(&self, other: &Self) -> bool {
+        self.to == other.to
+    }
+}
+
+impl Eq for ToIndex {}
+
+impl Ord for FromIndex {
+    fn cmp(&self, other: &Self) -> Ordering {
+        self.from.cmp(&other.from)
+    }
+}
+
+impl PartialOrd for FromIndex {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl PartialEq for FromIndex {
+    fn eq(&self, other: &Self) -> bool {
+        self.from == other.from
+    }
+}
+
+impl Eq for FromIndex {}
+
+impl Ord for FromToIndex {
+    fn cmp(&self, other: &Self) -> Ordering {
+        self.eval.cmp(&other.eval)
+    }
+}
+
+impl PartialOrd for FromToIndex {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl PartialEq for FromToIndex {
+    fn eq(&self, other: &Self) -> bool {
+        self.eval == other.eval
+    }
+}
+
+impl Eq for FromToIndex {}
 
 // 后期根据需要扩展
 impl Evaluation {
-    pub fn from(count: usize) -> Evaluation {
-        Evaluation { count }
+    pub fn from(count: usize) -> Self {
+        Self { count }
     }
 
-    pub fn append(&mut self, evaluation: Evaluation) {
-        self.count += evaluation.count;
-    }
-
-    pub fn to_string(&self) -> String {
-        format!("{}", self.count)
+    pub fn insert(&mut self, other: Self) {
+        self.count += other.count;
     }
 }
 
 impl ToIndex {
-    pub fn new() -> Self {
+    pub fn from(to: usize, eval: Evaluation) -> Self {
+        Self { to, eval }
+    }
+
+    pub fn insert(&mut self, eval: Evaluation) {
+        self.eval.insert(eval);
+    }
+}
+
+impl FromIndex {
+    pub fn from(from: usize, to_indexs: Vec<ToIndex>) -> Self {
+        Self { from, to_indexs }
+    }
+
+    pub fn insert(&mut self, to_index: ToIndex) {
+        match self.to_indexs.binary_search(&to_index) {
+            Ok(index) => self.to_indexs[index].insert(to_index.eval),
+            Err(index) => self.to_indexs.insert(index, to_index),
+        }
+    }
+}
+
+impl FromToIndex {
+    pub fn from(from: usize, to_index: &ToIndex) -> Self {
         Self {
-            inner: HashMap::new(),
+            from,
+            to: to_index.to,
+            eval: to_index.eval,
         }
-    }
-
-    pub fn from(to_index: usize, evaluation: Evaluation) -> Self {
-        let mut index_evaluation = Self::new();
-        index_evaluation.inner.insert(to_index, evaluation);
-
-        index_evaluation
-    }
-
-    // pub fn from(to_index_counts: Vec<(usize, usize)>) -> Self {
-    //     let mut result = Self::new();
-    //     for (to_index, count) in to_index_counts {
-    //         result
-    //             .inner
-    //             .borrow_mut()
-    //             .insert(to_index, Evaluation::new(count));
-    //     }
-
-    //     result
-    // }
-
-    pub fn insert(&mut self, to_index: usize, evaluation: Evaluation) {
-        if !self.inner.contains_key(&to_index) {
-            self.inner.insert(to_index, evaluation);
-        } else {
-            self.inner.get_mut(&to_index).unwrap().append(evaluation);
-        }
-    }
-
-    pub fn append(&mut self, other_index_evaluation: Self) {
-        for (to_index, evaluation) in other_index_evaluation.inner {
-            self.insert(to_index, evaluation);
-        }
-    }
-
-    pub fn to_string(&self) -> String {
-        let mut result = String::new();
-        for (to_index, evaluation) in self.inner.iter() {
-            let coord = coord::Coord::from_index(*to_index).unwrap();
-            result.push_str(&format!(
-                "[{} {}] ",
-                coord.to_string(coord::RecordType::Txt),
-                evaluation.to_string()
-            ));
-        }
-        result.push_str(&format!("【{}】\n", self.inner.len()));
-
-        result
     }
 }
 
 impl Aspect {
-    pub fn new() -> Self {
+    pub fn new(lock: u64) -> Self {
         Self {
-            inner: HashMap::new(),
+            lock,
+            from_indexs: vec![],
         }
     }
 
-    pub fn from(from_index: usize, to_index: ToIndex) -> Self {
-        let mut aspect = Self::new();
-        aspect.inner.insert(from_index, to_index);
-
-        aspect
-    }
-
-    pub fn insert(&mut self, from_index: usize, index_evaluation: ToIndex) {
-        if self.inner.contains_key(&from_index) {
-            self.inner
-                .get_mut(&from_index)
-                .unwrap()
-                .append(index_evaluation);
-        } else {
-            self.inner.insert(from_index, index_evaluation);
+    pub fn from(lock: u64, from: usize, to: usize, eval: Evaluation) -> Self {
+        Self {
+            lock,
+            from_indexs: vec![FromIndex::from(from, vec![ToIndex::from(to, eval)])],
         }
     }
 
-    pub fn append(&mut self, other: Self) {
-        for (from_index, to_index) in other.inner {
-            self.insert(from_index, to_index);
+    pub fn insert(&mut self, from_index: FromIndex) {
+        match self.from_indexs.binary_search(&from_index) {
+            Ok(index) => {
+                let old_from_index = &mut self.from_indexs[index];
+                for to_index in from_index.to_indexs {
+                    old_from_index.insert(to_index);
+                }
+            }
+            Err(index) => self.from_indexs.insert(index, from_index),
         }
     }
 
-    pub fn len(&self) -> usize {
-        self.inner.len()
-    }
-
-    pub fn to_string(&self) -> String {
-        let mut result = String::new();
-        for (from_index, index_evaluation) in self.inner.iter() {
-            let coord = coord::Coord::from_index(*from_index).unwrap();
-            result.push_str(&format!(
-                "{}=>{}",
-                coord.to_string(coord::RecordType::Txt),
-                index_evaluation.to_string()
-            ));
+    pub fn get_from_to_indexs(&self) -> Vec<FromToIndex> {
+        let mut result = vec![];
+        for from_index in &self.from_indexs {
+            for to_index in &from_index.to_indexs {
+                let from_to_index = FromToIndex::from(from_index.from, to_index);
+                let index = match result.binary_search(&from_to_index) {
+                    Ok(index) => index,
+                    Err(index) => index,
+                };
+                result.insert(index, from_to_index);
+            }
         }
-        result.push_str(&format!("aspect_evaluation.len:{}\n", self.inner.len()));
 
         result
     }
@@ -160,229 +275,63 @@ impl Aspect {
 impl Zorbist {
     pub fn new() -> Self {
         Self {
-            inner: HashMap::new(),
+            key_aspects: HashMap::new(),
         }
     }
 
-    pub fn from(id: u64, lock: u64, aspect_evaluation: Aspect) -> Self {
-        let mut zorbist = Self::new();
-        zorbist.insert(id, lock, aspect_evaluation);
+    pub fn from(key: u64, aspect: Aspect) -> Self {
+        let mut result = Self::new();
+        result.insert(key, aspect);
 
-        zorbist
+        result
     }
 
-    pub fn len(&self) -> usize {
-        self.inner.len()
-    }
-
-    fn insert(&mut self, id: u64, lock: u64, aspect: Aspect) {
-        match self.get_mut_aspect_evaluation(id, lock) {
-            Some(old_aspect) => old_aspect.append(aspect),
+    pub fn insert(&mut self, key: u64, aspect: Aspect) {
+        match self.get_mut_aspect(key, aspect.lock) {
+            Some(old_aspect) => {
+                for from_index in aspect.from_indexs {
+                    old_aspect.insert(from_index);
+                }
+            }
             None => {
-                self.inner.insert(id, (lock, aspect));
+                self.key_aspects.insert(key, aspect);
             }
         }
     }
 
-    pub fn append(&mut self, other_zorbist: Self) {
-        for (id, (lock, aspect_evaluation)) in other_zorbist.inner {
-            self.insert(id, lock, aspect_evaluation);
+    pub fn append(&mut self, other: Self) {
+        for (key, aspect) in other.key_aspects {
+            self.insert(key, aspect);
         }
     }
 
-    pub fn get_aspect_evaluation(
-        &self,
-        bit_board: &bit_board::BitBoard,
-        color: piece::Color,
-    ) -> Option<&Aspect> {
-        let (id, lock) = bit_board.get_key_lock(color);
-        let real_key = self.get_real_key(id, lock)?;
-
-        self.inner
-            .get(&real_key)
-            .map(|(_, aspect_evaluation)| aspect_evaluation)
-    }
-
-    fn get_mut_aspect_evaluation(&mut self, id: u64, lock: u64) -> Option<&mut Aspect> {
-        let real_key = self.get_real_key(id, lock)?;
-
-        self.inner
-            .get_mut(&real_key)
-            .map(|(_, aspect_evaluation)| aspect_evaluation)
-    }
-
-    fn get_real_key(&self, id: u64, lock: u64) -> Option<u64> {
-        let mut real_key = id;
-        if !self.inner.contains_key(&id) {
-            return None;
-        }
-
+    pub fn get_mut_aspect(&mut self, mut key: u64, lock: u64) -> Option<&mut Aspect> {
         for index in 0..bit_constant::COLLIDEZOBRISTKEY.len() {
-            if self.inner.contains_key(&real_key) && lock == self.inner.get(&real_key).unwrap().0 {
+            if let Some(aspect) = self.key_aspects.get(&key) {
+                if lock == aspect.lock {
+                    return self.key_aspects.get_mut(&key);
+                }
+            } else {
                 break;
             }
 
-            assert!(
-                false,
-                "Key:({id:016x})->RealKey:({real_key:016x})'s Lock({lock:016x}) is not find!\n"
-            );
-
-            real_key ^= bit_constant::COLLIDEZOBRISTKEY[index];
+            assert!(false, "Key:({key:016x})'s Lock({lock:016x}) is not find!\n");
+            key ^= bit_constant::COLLIDEZOBRISTKEY[index];
         }
 
-        // assert!(
-        //     self.inner.contains_key(&real_key),
-        //     "Key:({id:016x})->RealKey:({real_key:016x})'s Lock({lock:016x}) is not find!\n"
-        // );
-
-        Some(real_key)
+        None
     }
 
-    // pub fn from_db(conn: &mut SqliteConnection) -> Result<Self, Error> {
-    //     let eva_asp_zor: Vec<(EvaluationData, AspectData, ZorbistData)> = evaluation::table
-    //         .inner_join(aspect::table.inner_join(zorbist::table))
-    //         .select((
-    //             EvaluationData::as_select(),
-    //             AspectData::as_select(),
-    //             ZorbistData::as_select(),
-    //         ))
-    //         .load::<(EvaluationData, AspectData, ZorbistData)>(conn)?;
-
-    //     let mut zorbist = Self::new();
-    //     for (eva, asp, zor) in eva_asp_zor {
-    //         zorbist.insert(
-    //             zor.id as u64,
-    //             zor.lock as u64,
-    //             Aspect::from(
-    //                 asp.from_index as usize,
-    //                 ToIndex::from(eva.to_index as usize, Evaluation::from(eva.count as usize)),
-    //             ),
-    //         );
-    //     }
-
-    //     Ok(zorbist)
-    // }
-
-    // // 每次全新保存数据
-    // fn save_to(
-    //     conn: &mut SqliteConnection,
-    //     zorbist_datas: &Vec<ZorbistData>,
-    //     aspect_datas: &Vec<AspectData>,
-    //     evaluation_datas: &Vec<EvaluationData>,
-    // ) -> Result<(usize, usize, usize), Error> {
-    //     // Sqlite3 "PRAGMA foreign_keys = ON"
-    //     EvaluationData::clear(conn);
-    //     let zor_count = diesel::insert_into(zorbist::table)
-    //         .values(zorbist_datas)
-    //         .execute(conn)?;
-    //     let asp_count = diesel::insert_into(aspect::table)
-    //         .values(aspect_datas)
-    //         .execute(conn)?;
-    //     let eva_count = diesel::insert_into(evaluation::table)
-    //         .values(evaluation_datas)
-    //         .execute(conn)?;
-
-    //     Ok((zor_count, asp_count, eva_count))
-    // }
-
-    // pub fn save_db(&self, conn: &mut SqliteConnection) -> Result<(usize, usize, usize), Error> {
-    //     let mut zorbist_datas = vec![];
-    //     let mut aspect_datas = vec![];
-    //     let mut evaluation_datas = vec![];
-    //     let mut aspect_id = 0;
-    //     for (id, (lock, aspect)) in self.inner.iter() {
-    //         let id = *id as i64;
-    //         let lock = *lock as i64;
-    //         zorbist_datas.push(ZorbistData { id, lock });
-    //         for (from_index, to_index_eval) in aspect.inner.iter() {
-    //             let from_index = *from_index as i32;
-    //             aspect_id += 1;
-    //             aspect_datas.push(AspectData {
-    //                 id: aspect_id,
-    //                 from_index,
-    //                 zorbist_id: id,
-    //             });
-    //             for (to_index, eval) in to_index_eval.inner.iter() {
-    //                 let to_index = *to_index as i32;
-    //                 evaluation_datas.push(EvaluationData {
-    //                     to_index,
-    //                     count: eval.count as i32,
-    //                     aspect_id,
-    //                 });
-    //             }
-    //         }
-    //     }
-
-    //     Self::save_to(conn, &zorbist_datas, &aspect_datas, &evaluation_datas)
-    // }
-
-    pub fn from_db_manuals(conn: &mut SqliteConnection) -> Result<Self, Error> {
+    pub fn from_db(conn: &mut SqliteConnection) -> Result<Self, Error> {
         let mut zorbist = Zorbist::new();
-        let bit_board = crate::board::Board::new().bit_board();
-        // for info in ManualInfo::from_db(conn, "%")? {
+        let bit_board = bit_board::BitBoard::new();
         for rowcols in ManualInfo::get_rowcols(conn)? {
-            // if let Some(rowcols) = info.rowcols {
             if let Some(rowcols) = rowcols {
-                for (id, lock, aspect) in bit_board.clone().get_id_lock_asps(rowcols) {
-                    zorbist.insert(id, lock, aspect);
-                }
+                bit_board.clone().insert_to_zorbist(&mut zorbist, rowcols);
             }
         }
 
         Ok(zorbist)
-    }
-
-    // pub fn from_history_datas(history_datas: &Vec<models::HistoryData>) -> Self {
-    //     let mut zorbist = Self::new();
-    //     for history_data in history_datas {
-    //         zorbist.insert(
-    //             history_data.akey as u64,
-    //             history_data.lock as u64,
-    //             Aspect::from(
-    //                 history_data.from_index as usize,
-    //                 ToIndex::from(
-    //                     history_data.to_index as usize,
-    //                     Evaluation::from(history_data.count as usize),
-    //                 ),
-    //             ),
-    //         );
-    //     }
-
-    //     zorbist
-    // }
-
-    // pub fn get_history_datas(&self) -> Vec<models::HistoryData> {
-    //     let mut history_datas = vec![];
-    //     for (akey, (lock, aspect)) in self.inner.iter() {
-    //         for (from_index, to_index_eval) in aspect.inner.iter() {
-    //             for (to_index, eval) in to_index_eval.inner.iter() {
-    //                 history_datas.push(models::HistoryData::from((
-    //                     *akey,
-    //                     *lock,
-    //                     *from_index,
-    //                     *to_index,
-    //                     eval.count,
-    //                 )));
-    //             }
-    //         }
-    //     }
-
-    //     history_datas
-    // }
-
-    pub fn to_string(&self) -> String {
-        let mut result = String::new();
-        for (id, (lock, aspect_evaluation)) in self.inner.iter() {
-            result.push_str(&format!("id:  {} lock: {}\n", id, lock));
-            result.push_str(&aspect_evaluation.to_string());
-        }
-
-        result.push_str(&format!(
-            "zorbist_aspect_evaluation.len: {}\n",
-            self.inner.len()
-        ));
-
-        result
     }
 }
 
@@ -393,7 +342,7 @@ mod tests {
     use crate::models;
 
     #[test]
-    #[ignore = "从文件提取zorbist后存入数据库"]
+    // #[ignore = "从文件提取zorbist后存入数据库"]
     fn test_eval_from_file() {
         let filename_manuals = crate::common::get_filename_manuals();
         let manuals = filename_manuals
@@ -401,61 +350,31 @@ mod tests {
             .map(|(_, _, manual)| manual)
             .collect::<Vec<manual::Manual>>();
         let zorbist = manual::get_zorbist_manuals(manuals);
-        let result = zorbist.to_string();
+        let result = format!("{}", zorbist);
         std::fs::write(format!("tests/output/zobrist_file.txt"), result).expect("Write Err.");
-
-        // let conn = &mut models::get_conn();
-        // let result = zorbist.save_db(conn).expect("Save Err.");
-        // println!("Save_from_file zor_asp_eva: {:?}", result);
     }
 
     #[test]
-    #[ignore = "从数据库提取manuals后转换成zorbist. (4.25s)"]
-    fn test_eval_from_db_manuals() {
+    #[ignore = "从数据库提取manuals后转换成zorbist. (4.25s-4.68s)"]
+    fn test_eval_from_db() {
         let conn = &mut models::get_conn();
-        let zorbist = Zorbist::from_db_manuals(conn).unwrap();
-        println!("From_db_manuals: {}", (zorbist.len()));
+        let zorbist = Zorbist::from_db(conn).unwrap();
+        println!("From_db_manuals: {}", (zorbist.key_aspects.len()));
+
+        let mut result = String::new();
+        for (key, aspect) in &zorbist.key_aspects {
+            if aspect.from_indexs.len() > 3 {
+                result.push_str(&format!("key:{:016X} lock:{:016X}\n", key, aspect.lock));
+                let from_to_indexs = aspect.get_from_to_indexs();
+                for from_to_index in &from_to_indexs {
+                    result.push_str(&format!("{}\n", from_to_index));
+                }
+                result.push_str(&format!("count: 【{}】\n\n", from_to_indexs.len()));
+            }
+        }
+        std::fs::write(format!("tests/output/zobrist_aspects.txt"), result).expect("Write Err.");
+
+        // let result = format!("{}", zorbist);
+        // std::fs::write(format!("tests/output/zobrist_db.txt"), result).expect("Write Err.");
     }
-
-    // #[test]
-    // #[ignore = "从数据库提取manuals转换成的zorbist_datas再存入数据库. (25.89)"]
-    // fn test_eval_save_db() {
-    //     let conn = &mut models::get_conn();
-    //     let zorbist = Zorbist::from_db_manuals(conn).unwrap();
-    //     println!("From_db_manuals: {}", (zorbist.len()));
-
-    //     let result = zorbist.save_db(conn);
-    //     println!("Save_from_db_manuals zor_asp_eva: {:?}", result);
-
-    //     let man_count = models::ManualInfo::count(conn).unwrap();
-    //     let zor_count = models::ZorbistData::count(conn).unwrap();
-    //     let asp_count = models::AspectData::count(conn).unwrap();
-    //     let eva_count = models::EvaluationData::count(conn).unwrap();
-    //     println!(
-    //         "manual_info count: {} zor_asp_eva: {:?}",
-    //         man_count,
-    //         (zor_count, asp_count, eva_count)
-    //     );
-    // }
-
-    // #[test]
-    // #[ignore = "从数据库zorbist表直接提取zorbist. (5.75s-8,63s)"]
-    // fn test_eval_from_db() {
-    //     let conn = &mut models::get_conn();
-    //     let zorbist = Zorbist::from_db(conn).unwrap();
-    //     println!("zorbist len: {}", zorbist.len());
-    // }
-
-    // #[test]
-    // #[ignore = "从数据表提取history_datas(2.12s), 转换为zorbist(4.22s), 再存入数据库(12.52s). (8.67s-18.86s)"]
-    // fn test_eval_from_db_history() {
-    //     let conn = &mut models::get_conn();
-    //     let history_datas = models::HistoryData::from_db(conn).unwrap();
-    //     let zorbist = Zorbist::from_history_datas(&history_datas);
-    //     println!("zorbist len: {}", zorbist.len());
-
-    //     let history_datas = zorbist.get_history_datas();
-    //     let _ = models::HistoryData::save_db(conn, &history_datas);
-    //     println!("history_datas len: {}", history_datas.len());
-    // }
 }

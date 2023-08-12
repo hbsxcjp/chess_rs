@@ -174,7 +174,7 @@ impl Board {
     }
 
     pub fn bit_board(&self) -> bit_board::BitBoard {
-        bit_board::BitBoard::new(&self.pieces)
+        bit_board::BitBoard::from(&self.pieces)
     }
 
     pub fn do_move(&mut self, amove: &Rc<amove::Move>) -> piece::Piece {

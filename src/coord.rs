@@ -1,5 +1,6 @@
 #![allow(dead_code)]
 use crate::common;
+use std::fmt::{Display, Formatter}; //coord,
 
 pub const ROWCOUNT: usize = 10;
 pub const COLCOUNT: usize = 9;
@@ -172,7 +173,8 @@ impl Coord {
 
     pub fn to_string(&self, record_type: RecordType) -> String {
         match record_type {
-            RecordType::Txt => format!("({},{})", self.row, self.col),
+            // RecordType::Txt => format!("({},{})", self.row, self.col),
+            RecordType::Txt => format!("{}", self),
             RecordType::PgnIccs => format!(
                 "{}{}",
                 char::from_u32('A' as u32 + self.col as u32).unwrap(),
@@ -182,6 +184,12 @@ impl Coord {
 
             _ => String::new(),
         }
+    }
+}
+
+impl Display for Coord {
+    fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
+        write!(f, "({},{})", self.row, self.col)
     }
 }
 

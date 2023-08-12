@@ -2,7 +2,7 @@
 
 use crate::board;
 // use diesel;
-use crate::schema::{self, aspect, evaluation, manual, zorbist}; //, history
+use crate::schema::{self, manual}; //, history  aspect, evaluation,, zorbist
 use diesel::connection::SimpleConnection;
 use diesel::prelude::*;
 use diesel::r2d2::{ConnectionManager, Pool, PooledConnection};
@@ -31,34 +31,34 @@ pub type SqlitePooledConnection = PooledConnection<ConnectionManager<SqliteConne
 //     pub count: i32,
 // }
 
-#[derive(Insertable, Queryable, Selectable)]
-#[diesel(table_name = zorbist)]
-#[diesel(check_for_backend(diesel::sqlite::Sqlite))]
-pub struct ZorbistData {
-    pub id: i64,
-    pub lock: i64,
-}
+// #[derive(Insertable, Queryable, Selectable)]
+// #[diesel(table_name = zorbist)]
+// #[diesel(check_for_backend(diesel::sqlite::Sqlite))]
+// pub struct ZorbistData {
+//     pub id: i64,
+//     pub lock: i64,
+// }
 
-#[derive(Insertable, Queryable, Selectable, Associations)]
-#[diesel(belongs_to(ZorbistData, foreign_key = zorbist_id))]
-#[diesel(table_name = aspect)]
-#[diesel(check_for_backend(diesel::sqlite::Sqlite))]
-pub struct AspectData {
-    pub id: i32,
-    pub from_index: i32,
-    pub zorbist_id: i64,
-}
+// #[derive(Insertable, Queryable, Selectable, Associations)]
+// #[diesel(belongs_to(ZorbistData, foreign_key = zorbist_id))]
+// #[diesel(table_name = aspect)]
+// #[diesel(check_for_backend(diesel::sqlite::Sqlite))]
+// pub struct AspectData {
+//     pub id: i32,
+//     pub from_index: i32,
+//     pub zorbist_id: i64,
+// }
 
-#[derive(Insertable, Queryable, Selectable, Associations)]
-#[diesel(belongs_to(AspectData, foreign_key = aspect_id))]
-#[diesel(table_name = evaluation)]
-#[diesel(check_for_backend(diesel::sqlite::Sqlite))]
-pub struct EvaluationData {
-    // pub id: i32,
-    pub to_index: i32,
-    pub count: i32,
-    pub aspect_id: i32,
-}
+// #[derive(Insertable, Queryable, Selectable, Associations)]
+// #[diesel(belongs_to(AspectData, foreign_key = aspect_id))]
+// #[diesel(table_name = evaluation)]
+// #[diesel(check_for_backend(diesel::sqlite::Sqlite))]
+// pub struct EvaluationData {
+//     // pub id: i32,
+//     pub to_index: i32,
+//     pub count: i32,
+//     pub aspect_id: i32,
+// }
 
 #[derive(Insertable, Queryable, Selectable, Debug)]
 #[diesel(table_name = manual)]
@@ -175,41 +175,41 @@ fn set_seq_zero(conn: &mut SqliteConnection, table: &str) {
 //     }
 // }
 
-impl ZorbistData {
-    pub fn count(conn: &mut SqliteConnection) -> Result<i64, Error> {
-        use diesel::dsl::count;
-        use schema::zorbist::dsl::*;
-        zorbist.select(count(id)).first::<i64>(conn)
-    }
-}
+// impl ZorbistData {
+//     pub fn count(conn: &mut SqliteConnection) -> Result<i64, Error> {
+//         use diesel::dsl::count;
+//         use schema::zorbist::dsl::*;
+//         zorbist.select(count(id)).first::<i64>(conn)
+//     }
+// }
 
-impl AspectData {
-    pub fn max_id(conn: &mut SqliteConnection) -> Result<i32, Error> {
-        use diesel::dsl::max;
-        use schema::aspect::dsl::*;
-        let max_id = aspect.select(max(id)).limit(1).load::<Option<i32>>(conn)?;
-        Ok(max_id[0].unwrap())
-    }
+// impl AspectData {
+//     pub fn max_id(conn: &mut SqliteConnection) -> Result<i32, Error> {
+//         use diesel::dsl::max;
+//         use schema::aspect::dsl::*;
+//         let max_id = aspect.select(max(id)).limit(1).load::<Option<i32>>(conn)?;
+//         Ok(max_id[0].unwrap())
+//     }
 
-    pub fn count(conn: &mut SqliteConnection) -> Result<i64, Error> {
-        use diesel::dsl::count;
-        use schema::aspect::dsl::*;
-        aspect.select(count(id)).first::<i64>(conn)
-    }
-}
+//     pub fn count(conn: &mut SqliteConnection) -> Result<i64, Error> {
+//         use diesel::dsl::count;
+//         use schema::aspect::dsl::*;
+//         aspect.select(count(id)).first::<i64>(conn)
+//     }
+// }
 
-impl EvaluationData {
-    pub fn clear(conn: &mut SqliteConnection) {
-        let _ = diesel::delete(zorbist::table).execute(conn);
-        set_seq_zero(conn, "evaluation");
-    }
+// impl EvaluationData {
+//     pub fn clear(conn: &mut SqliteConnection) {
+//         let _ = diesel::delete(zorbist::table).execute(conn);
+//         set_seq_zero(conn, "evaluation");
+//     }
 
-    pub fn count(conn: &mut SqliteConnection) -> Result<i64, Error> {
-        use diesel::dsl::count;
-        use schema::evaluation::dsl::*;
-        evaluation.select(count(id)).first::<i64>(conn)
-    }
-}
+//     pub fn count(conn: &mut SqliteConnection) -> Result<i64, Error> {
+//         use diesel::dsl::count;
+//         use schema::evaluation::dsl::*;
+//         evaluation.select(count(id)).first::<i64>(conn)
+//     }
+// }
 
 impl ManualInfo {
     pub fn new() -> Self {
@@ -352,23 +352,4 @@ mod tests {
         let result = ManualInfo::init_xqbase(conn);
         println!("ManualInfo::init_xqbase count: {}", result.unwrap());
     }
-
-    // #[test]
-    // #[ignore = "从12141个manual提取为historys后存入数据库。(9.61s)"]
-    // fn test_init_xqbase_historys() {
-    //     let conn = &mut get_conn();
-    //     let result = HistoryData::init_xqbase(conn);
-    //     println!("HistoryData::init_xqbase count: {}", result.unwrap());
-    // }
-
-    // #[test]
-    // #[ignore = "从数据库表提取为historys (0.89s), 后存入数据库 (9.08s-0.89s)"]
-    // fn test_models_historys() {
-    //     let conn = &mut get_conn();
-    //     let history_datas = HistoryData::from_db(conn).unwrap();
-    //     println!("HistoryData::from_db count: {}", history_datas.len());
-
-    //     let result = HistoryData::save_db(conn, &history_datas);
-    //     println!("HistoryData::save_db count: {}", result.unwrap());
-    // }
 }
