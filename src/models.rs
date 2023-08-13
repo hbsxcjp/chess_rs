@@ -352,4 +352,25 @@ mod tests {
         let result = ManualInfo::init_xqbase(conn);
         println!("ManualInfo::init_xqbase count: {}", result.unwrap());
     }
+
+    #[test]
+    #[ignore = "从数据库提取全部manuals的rowcols存入文本文件。"]
+    fn test_init_xqbase_rowcols() {
+        let conn = &mut get_conn();
+        let mut result = String::new();
+        for rowcols in ManualInfo::get_rowcols(conn).unwrap() {
+            if let Some(rowcols) = rowcols {
+                result.push_str(&format!("\t\"{}\",\n", rowcols));
+            }
+        }
+        std::fs::write(
+            format!("tests/output/manuals_rowcols.txt"),
+            // format!("src/manual_rowcols.rs"),
+            format!(
+                "#![allow(dead_code)]\n\npub const ROWCOLS: [&str; 12141] = [\n{}];",
+                result
+            ),
+        )
+        .expect("Write Err.");
+    }
 }

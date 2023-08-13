@@ -341,19 +341,22 @@ impl BitBoard {
         ))
     }
 
-    pub fn insert_to_zorbist(&mut self, zorbist: &mut Zorbist, rowcols: String) {
+    pub fn get_key_lock_from_tos(&mut self, rowcols: &str) -> Vec<(u64, u64, usize, usize)> {
+        let mut result = vec![];
         let mut color = piece::Color::Red;
-        for coordpair in manual_move::ManualMove::get_coordpairs_from_rowcols(&rowcols).unwrap() {
+        for coordpair in manual_move::ManualMove::get_coordpairs_from_rowcols(rowcols).unwrap() {
             let (from, to) = coordpair.from_to_index();
             let key = self.get_key(color);
             let lock = self.get_lock(color);
             if self.do_move(from, to).is_some() {
-                zorbist.insert(key, Aspect::from(lock, from, to, Evaluation::from(1)));
+                result.push((key, lock, from, to));
             }
 
             color = piece::other_color(color);
         }
-    }
+
+        result
+    }   
 
     pub fn to_string(&mut self) -> String {
         let mut result = format!("bottom_color: {:?}\nkinds_to_chs:\n", self.bottom_color);

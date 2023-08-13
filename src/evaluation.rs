@@ -5,6 +5,7 @@
 // use std::cell::RefCell;
 // use rayon::vec;
 use crate::models::ManualInfo;
+use crate::schema::manual;
 use crate::{bit_board, bit_constant, coord};
 use diesel::result::Error;
 use diesel::sqlite::SqliteConnection;
@@ -327,7 +328,9 @@ impl Zorbist {
         let bit_board = bit_board::BitBoard::new();
         for rowcols in ManualInfo::get_rowcols(conn)? {
             if let Some(rowcols) = rowcols {
-                bit_board.clone().insert_to_zorbist(&mut zorbist, rowcols);
+                for (key, lock, from, to) in bit_board.clone().get_key_lock_from_tos(&rowcols) {
+                    zorbist.insert(key, Aspect::from(lock, from, to, Evaluation::from(1)));
+                }
             }
         }
 
@@ -335,11 +338,17 @@ impl Zorbist {
     }
 }
 
+lazy_static! {
+    pub static ref ZORBIST: Zorbist = {
+        let conn = &mut crate::models::get_conn();
+        Zorbist::from_db(conn).unwrap()
+    };
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::manual;
-    use crate::models;
 
     #[test]
     // #[ignore = "从文件提取zorbist后存入数据库"]
@@ -357,13 +366,14 @@ mod tests {
     #[test]
     #[ignore = "从数据库提取manuals后转换成zorbist. (4.25s-4.68s)"]
     fn test_eval_from_db() {
-        let conn = &mut models::get_conn();
-        let zorbist = Zorbist::from_db(conn).unwrap();
+        // let conn = &mut crate::models::get_conn();
+        // let zorbist = Zorbist::from_db(conn).unwrap();
+        let zorbist = &ZORBIST;
         println!("From_db_manuals: {}", (zorbist.key_aspects.len()));
 
         let mut result = String::new();
         for (key, aspect) in &zorbist.key_aspects {
-            if aspect.from_indexs.len() > 3 {
+            if aspect.from_indexs.len() > 6 {
                 result.push_str(&format!("key:{:016X} lock:{:016X}\n", key, aspect.lock));
                 let from_to_indexs = aspect.get_from_to_indexs();
                 for from_to_index in &from_to_indexs {

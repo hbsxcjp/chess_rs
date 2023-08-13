@@ -19,3 +19,4 @@ serde_json = "1.0"
 rayon = "1.7"
 diesel = { version = "2.1.0", features = ["sqlite", "r2d2"] }
 dotenvy = "0.15"
+lazy_static = "1.4"
