@@ -1,5 +1,6 @@
 extern crate chess;
+use std::io;
 
-fn main() {
-    println!("Hello, world!");
+fn main() -> io::Result<()> {
+    Ok(())
 }

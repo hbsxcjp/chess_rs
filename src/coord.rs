@@ -1,6 +1,9 @@
 #![allow(dead_code)]
 use crate::common;
-use std::fmt::{Display, Formatter}; //coord,
+use std::{
+    fmt::{Display, Formatter},
+    path::Path,
+}; //coord,
 
 pub const ROWCOUNT: usize = 10;
 pub const COLCOUNT: usize = 9;
@@ -26,22 +29,16 @@ impl RecordType {
         format!("{:?}", self).to_ascii_lowercase()
     }
 
-    pub fn get_record_type(file_name: &str) -> common::Result<RecordType> {
-        let ext_pos = file_name
-            .rfind('.')
-            .ok_or(common::ParseError::RecordTypeError)?;
-        let ext_name = file_name
-            .get(ext_pos + 1..)
-            .ok_or(common::ParseError::RecordTypeError)?;
-
-        match ext_name {
-            _ if ext_name == RecordType::Xqf.ext_name() => Ok(RecordType::Xqf),
-            _ if ext_name == RecordType::Bin.ext_name() => Ok(RecordType::Bin),
-            _ if ext_name == RecordType::Txt.ext_name() => Ok(RecordType::Txt),
-            _ if ext_name == RecordType::PgnIccs.ext_name() => Ok(RecordType::PgnIccs),
-            _ if ext_name == RecordType::PgnRc.ext_name() => Ok(RecordType::PgnRc),
-            _ if ext_name == RecordType::PgnZh.ext_name() => Ok(RecordType::PgnZh),
-            _ => Err(common::ParseError::RecordTypeError),
+    pub fn get_record_type(path: &Path) -> Option<RecordType> {
+        let ext = path.extension()?;
+        match ext {
+            _ if ext.eq(RecordType::Xqf.ext_name().as_str()) => Some(RecordType::Xqf),
+            _ if ext.eq(RecordType::Bin.ext_name().as_str()) => Some(RecordType::Bin),
+            _ if ext.eq(RecordType::Txt.ext_name().as_str()) => Some(RecordType::Txt),
+            _ if ext.eq(RecordType::PgnIccs.ext_name().as_str()) => Some(RecordType::PgnIccs),
+            _ if ext.eq(RecordType::PgnRc.ext_name().as_str()) => Some(RecordType::PgnRc),
+            _ if ext.eq(RecordType::PgnZh.ext_name().as_str()) => Some(RecordType::PgnZh),
+            _ => None,
         }
     }
 }

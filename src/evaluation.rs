@@ -4,8 +4,9 @@
 // use serde_derive::{Deserialize, Serialize};
 // use std::cell::RefCell;
 // use rayon::vec;
+use crate::manual;
 use crate::models::ManualInfo;
-use crate::schema::manual;
+use crate::schema;
 use crate::{bit_board, bit_constant, coord};
 use diesel::result::Error;
 use diesel::sqlite::SqliteConnection;
@@ -287,6 +288,29 @@ impl Zorbist {
         result
     }
 
+    pub fn from_db(conn: &mut SqliteConnection) -> Result<Self, Error> {
+        let mut result = Zorbist::new();
+        let bit_board = bit_board::BitBoard::new();
+        for rowcols in ManualInfo::get_rowcols(conn)? {
+            if let Some(rowcols) = rowcols {
+                for (key, lock, from, to) in bit_board.clone().get_key_lock_from_tos(&rowcols) {
+                    result.insert(key, Aspect::from(lock, from, to, Evaluation::from(1)));
+                }
+            }
+        }
+
+        Ok(result)
+    }
+
+    pub fn from_manuals(manuals: &Vec<manual::Manual>) -> Self {
+        let mut result = Self::new();
+        for manual in manuals {
+            result.append(manual.get_zorbist());
+        }
+
+        result
+    }
+
     pub fn insert(&mut self, key: u64, aspect: Aspect) {
         match self.get_mut_aspect(key, aspect.lock) {
             Some(old_aspect) => {
@@ -322,20 +346,6 @@ impl Zorbist {
 
         None
     }
-
-    pub fn from_db(conn: &mut SqliteConnection) -> Result<Self, Error> {
-        let mut zorbist = Zorbist::new();
-        let bit_board = bit_board::BitBoard::new();
-        for rowcols in ManualInfo::get_rowcols(conn)? {
-            if let Some(rowcols) = rowcols {
-                for (key, lock, from, to) in bit_board.clone().get_key_lock_from_tos(&rowcols) {
-                    zorbist.insert(key, Aspect::from(lock, from, to, Evaluation::from(1)));
-                }
-            }
-        }
-
-        Ok(zorbist)
-    }
 }
 
 lazy_static! {
@@ -358,7 +368,7 @@ mod tests {
             .into_iter()
             .map(|(_, _, manual)| manual)
             .collect::<Vec<manual::Manual>>();
-        let zorbist = manual::get_zorbist_manuals(manuals);
+        let zorbist = Zorbist::from_manuals(&manuals);
         let result = format!("{}", zorbist);
         std::fs::write(format!("tests/output/zobrist_file.txt"), result).expect("Write Err.");
     }

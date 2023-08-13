@@ -236,44 +236,6 @@ impl ManualInfo {
         }
     }
 
-    pub fn clear(conn: &mut SqliteConnection) {
-        let _ = diesel::delete(manual::table).execute(conn);
-        set_seq_zero(conn, "manual");
-    }
-
-    pub fn count(conn: &mut SqliteConnection) -> Result<i64, Error> {
-        use diesel::dsl::count;
-        use schema::manual::dsl::*;
-        manual.select(count(id)).first::<i64>(conn)
-    }
-
-    pub fn init_xqbase(conn: &mut SqliteConnection) -> Result<i64, Error> {
-        ManualInfo::clear(conn);
-        let query = std::fs::read_to_string("insert_xqbase.sql").unwrap();
-        let _ = conn.batch_execute(&query);
-
-        ManualInfo::count(conn)
-    }
-
-    pub fn from_db(conn: &mut SqliteConnection, title_part: &str) -> Result<Vec<Self>, Error> {
-        manual::table
-            .filter(manual::title.like(title_part))
-            .select(Self::as_select())
-            .load::<Self>(conn)
-    }
-
-    pub fn save_db(&self, conn: &mut SqliteConnection) -> Result<usize, Error> {
-        diesel::insert_into(manual::table)
-            .values(self)
-            .execute(conn)
-    }
-
-    pub fn get_rowcols(conn: &mut SqliteConnection) -> Result<Vec<Option<String>>, Error> {
-        // use diesel::dsl::max;
-        use schema::manual::dsl::*;
-        manual.select(rowcols.as_sql()).load::<Option<String>>(conn)
-    }
-
     pub fn from(key_values: Vec<(String, String)>) -> Self {
         let mut info = Self::new();
         for (key, value) in key_values {
@@ -330,6 +292,75 @@ impl ManualInfo {
 
         result
     }
+
+    pub fn clear(conn: &mut SqliteConnection) {
+        let _ = diesel::delete(manual::table).execute(conn);
+        set_seq_zero(conn, "manual");
+    }
+
+    pub fn count(conn: &mut SqliteConnection) -> Result<i64, Error> {
+        use diesel::dsl::count;
+        use schema::manual::dsl::*;
+        manual.select(count(id)).first::<i64>(conn)
+    }
+
+    pub fn init_xqbase(conn: &mut SqliteConnection) -> Result<i64, Error> {
+        ManualInfo::clear(conn);
+        let query = std::fs::read_to_string("insert_xqbase.sql").unwrap();
+        let _ = conn.batch_execute(&query);
+
+        ManualInfo::count(conn)
+    }
+
+    pub fn from_db(conn: &mut SqliteConnection, title_part: &str) -> Result<Vec<Self>, Error> {
+        manual::table
+            .filter(manual::title.like(title_part))
+            .select(Self::as_select())
+            .load::<Self>(conn)
+    }
+
+    pub fn save_db(infos: &Vec<ManualInfo>, conn: &mut SqliteConnection) -> Result<usize, Error> {
+        diesel::insert_into(manual::table)
+            .values(infos)
+            .execute(conn)
+    }
+
+    pub fn get_fen(&self) -> &str {
+        if let Some(value) = &self.fen {
+            if let Some((fen, _)) = value.split_once(" ") {
+                return fen;
+            }
+        }
+
+        board::FEN
+    }
+
+    pub fn get_rowcols(conn: &mut SqliteConnection) -> Result<Vec<Option<String>>, Error> {
+        // use diesel::dsl::max;
+        use schema::manual::dsl::*;
+        manual.select(rowcols.as_sql()).load::<Option<String>>(conn)
+    }
+
+    pub fn get_copy(&self) -> Self {
+        Self::from(
+            self.get_key_values()
+                .iter()
+                .map(|(key, value)| (key.to_string(), value.to_string()))
+                .collect(),
+        )
+    }
+
+    pub fn set_source_moves(&mut self, source: &str, rowcols: &str, movestring: &str) {
+        self.source = Some(source.to_string());
+        self.rowcols = Some(rowcols.to_string());
+        self.movestring = Some(movestring.to_string());
+    }
+
+    pub fn cut_source_moves(&mut self) {
+        self.source = None;
+        self.rowcols = None;
+        self.movestring = None;
+    }
 }
 
 #[cfg(test)]
@@ -341,7 +372,8 @@ mod tests {
     fn test_manualinfo() {
         let conn = &mut get_conn();
 
-        let count = ManualInfo::new().save_db(conn).unwrap_or(0);
+        let infos = vec![ManualInfo::new()];
+        let count = ManualInfo::save_db(&infos, conn).unwrap_or(0);
         println!("Saved : {:?}", count);
     }
 

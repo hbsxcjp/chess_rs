@@ -313,7 +313,7 @@ impl ManualMove {
         zorbist
     }
 
-    pub fn to_rowcols(&self) -> String {
+    pub fn get_rowcols(&self) -> String {
         let mut reslut = String::new();
         let mut amove = self.root_move.clone();
         while let Some(after) = amove.after() {

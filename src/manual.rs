@@ -4,33 +4,16 @@ use crate::common;
 use crate::coord::{self, COLCOUNT, ROWCOUNT, SEATCOUNT};
 use crate::evaluation;
 use crate::manual_move;
+use crate::models::ManualInfo;
 use crate::{board, models};
-// use diesel::prelude::*;
-// use diesel::result::Error;
-// use diesel::sqlite::SqliteConnection;
+use diesel::sqlite::SqliteConnection;
 use encoding::all::GBK;
 use encoding::{DecoderTrap, Encoding};
-use std::borrow::Borrow;
+use std::borrow::{Borrow, BorrowMut};
+use std::path::{Path, PathBuf};
 // use std::cell::RefCell;
-
-pub fn get_fen(info: &models::ManualInfo) -> &str {
-    if let Some(value) = &info.fen {
-        if let Some((fen, _)) = value.split_once(" ") {
-            return fen;
-        }
-    }
-
-    board::FEN
-}
-
-pub fn get_zorbist_manuals(manuals: Vec<Manual>) -> evaluation::Zorbist {
-    let mut result = evaluation::Zorbist::new();
-    for manual in manuals {
-        result.append(manual.manual_move.get_zorbist());
-    }
-
-    result
-}
+// use diesel::prelude::*;
+// use diesel::result::Error;
 
 #[derive(Debug)]
 pub struct Manual {
@@ -53,17 +36,20 @@ impl Manual {
         Manual { info, manual_move }
     }
 
-    pub fn from_filename(file_name: &str) -> common::Result<Self> {
-        let record_type = coord::RecordType::get_record_type(file_name)?;
-        match record_type {
-            coord::RecordType::Xqf => Self::from_xqf(file_name),
-            coord::RecordType::Bin => Self::from_bin(file_name),
-            _ => Self::from_string(file_name, record_type),
+    pub fn from_path(path: &Path) -> common::Result<Self> {
+        if let Some(record_type) = coord::RecordType::get_record_type(path) {
+            match record_type {
+                coord::RecordType::Xqf => Self::from_xqf(path),
+                coord::RecordType::Bin => Self::from_bin(path),
+                _ => Self::from_string(path, record_type),
+            }
+        } else {
+            Err(common::ParseError::StringParse)
         }
     }
 
     pub fn from_info(info: models::ManualInfo) -> common::Result<Self> {
-        let fen = get_fen(&info);
+        let fen = info.get_fen();
         let manual_move = if let Some(manual_move_str) = &info.movestring {
             manual_move::ManualMove::from_string(fen, &manual_move_str, coord::RecordType::Txt)?
         } else if let Some(rowcols_str) = info.rowcols.as_ref() {
@@ -75,35 +61,25 @@ impl Manual {
         Ok(Manual::from(info, manual_move))
     }
 
-    pub fn set_source_moves(&mut self, source: &str) {
-        self.info.source = Some(source.to_string());
-        self.info.rowcols = Some(self.manual_move.to_rowcols());
-        self.info.movestring = Some(self.manual_move.to_string(coord::RecordType::Txt));
-    }
-
-    pub fn cut_source_moves(&mut self) {
-        self.info.source = None;
-        self.info.rowcols = None;
-        self.info.movestring = None;
-    }
-
-    pub fn write(&self, file_name: &str) -> Result<(), std::io::ErrorKind> {
-        let record_type =
-            coord::RecordType::get_record_type(file_name).map_err(|_| std::io::ErrorKind::Other)?;
-        match record_type {
-            coord::RecordType::Xqf => Err(std::io::ErrorKind::Other),
-            coord::RecordType::Bin => {
-                std::fs::write(&file_name, self.get_bytes()).map_err(|_| std::io::ErrorKind::Other)
+    pub fn write(&self, path: &Path) -> Result<(), std::io::ErrorKind> {
+        if let Some(record_type) = coord::RecordType::get_record_type(path) {
+            match record_type {
+                coord::RecordType::Xqf => Err(std::io::ErrorKind::Other),
+                coord::RecordType::Bin => {
+                    std::fs::write(&path, self.get_bytes()).map_err(|_| std::io::ErrorKind::Other)
+                }
+                _ => std::fs::write(&path, self.to_string_type(record_type))
+                    .map_err(|_| std::io::ErrorKind::Other),
             }
-            _ => std::fs::write(&file_name, self.to_string_type(record_type))
-                .map_err(|_| std::io::ErrorKind::Other),
+        } else {
+            Err(std::io::ErrorKind::Other)
         }
     }
 
-    fn from_xqf(file_name: &str) -> common::Result<Self> {
+    fn from_xqf(path: &Path) -> common::Result<Self> {
         let mut info = models::ManualInfo::new();
         let mut manual_move = manual_move::ManualMove::new();
-        if let Ok(input) = std::fs::read(file_name) {
+        if let Ok(input) = std::fs::read(path) {
             //文件标记'XQ'=$5158/版本/加密掩码/ProductId[4], 产品(厂商的产品号)
             // 棋谱评论员/文件的作者
             // 32个棋子的原始位置
@@ -253,8 +229,8 @@ impl Manual {
         Ok(Manual::from(info, manual_move))
     }
 
-    fn from_bin(file_name: &str) -> common::Result<Self> {
-        if let Ok(input) = std::fs::read(file_name) {
+    fn from_bin(path: &Path) -> common::Result<Self> {
+        if let Ok(input) = std::fs::read(path) {
             let mut input = input.borrow();
             let mut key_values = vec![];
             let info_len = common::read_be_u32(&mut input);
@@ -269,8 +245,8 @@ impl Manual {
 
             // let fen = get_fen_old(&info_old);
             let info = models::ManualInfo::from(key_values);
-            let fen = get_fen(&info);
-            let manual_move = manual_move::ManualMove::from_bin(&fen, &mut input);
+            let fen = info.get_fen();
+            let manual_move = manual_move::ManualMove::from_bin(fen, &mut input);
             Ok(Manual::from(info, manual_move))
         } else {
             Err(common::ParseError::StringParse)
@@ -290,9 +266,13 @@ impl Manual {
         result
     }
 
-    fn from_string(file_name: &str, record_type: coord::RecordType) -> common::Result<Self> {
+    pub fn get_zorbist(&self) -> evaluation::Zorbist {
+        self.manual_move.get_zorbist()
+    }
+
+    fn from_string(path: &Path, record_type: coord::RecordType) -> common::Result<Self> {
         let manual_string =
-            std::fs::read_to_string(&file_name).map_err(|_| common::ParseError::StringParse)?;
+            std::fs::read_to_string(&path).map_err(|_| common::ParseError::StringParse)?;
         let (info_str, manual_move_str) = manual_string
             .split_once("\n\n")
             .ok_or(common::ParseError::StringParse)?;
@@ -306,7 +286,7 @@ impl Manual {
         }
 
         let info = models::ManualInfo::from(key_values);
-        let fen = get_fen(&info);
+        let fen = info.get_fen();
         // if record_type == coord::RecordType::PgnZh {
         //     println!("info:{:?}\nfen:{}", info, fen);
         // }
@@ -329,36 +309,52 @@ impl Manual {
     }
 }
 
+pub fn save_manuals_to_db(
+    filename_manuals: &Vec<(&str, &str, Manual)>,
+    conn: &mut SqliteConnection,
+) -> Result<usize, diesel::result::Error> {
+    let mut infos = vec![];
+    for (file_name, _, manual) in filename_manuals {
+        let mut info = manual.info.get_copy();
+        info.set_source_moves(
+            file_name,
+            &manual.manual_move.get_rowcols(),
+            &manual.manual_move.to_string(coord::RecordType::Txt),
+        );
+        infos.push(info);
+    }
+
+    ManualInfo::save_db(&infos, conn)
+}
+
+pub fn read_manuals_from_db(
+    conn: &mut SqliteConnection,
+    title_part: &str,
+) -> Result<Vec<Manual>, diesel::result::Error> {
+    let mut result = vec![];
+    let infos = models::ManualInfo::from_db(conn, title_part)?;
+    for info in infos {
+        if let Ok(manual) = Manual::from_info(info) {
+            result.push(manual);
+        }
+    }
+
+    Ok(result)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
-    use diesel::result::Error;
-    use diesel::sqlite::SqliteConnection;
-
-    fn from_db(conn: &mut SqliteConnection, title_part: &str) -> Result<Vec<Manual>, Error> {
-        let mut result = vec![];
-        let infos = models::ManualInfo::from_db(conn, title_part)?;
-        for info in infos {
-            if let Ok(manual) = Manual::from_info(info) {
-                result.push(manual);
-            }
-        }
-
-        Ok(result)
-    }
 
     #[test]
-    fn test_manual_file() {
+    fn test_manual_from_file() {
         let manual = Manual::new();
         assert_eq!("[title: 未命名]\n[game: 人机对战]\n[fen: rnbakabnr/9/1c5c1/p1p1p1p1p/9/9/P1P1P1P1P/1C5C1/9/RNBAKABNR r - - 0 1]\n\n\n", 
             manual.to_string());
 
-        fn get_file_path(file_name: &str, record_type: coord::RecordType) -> String {
-            format!("tests/output/{}.{}", file_name, record_type.ext_name())
-        }
-
         let filename_manuals = common::get_filename_manuals();
         for (file_name, manual_string, manual) in filename_manuals {
+            println!("file_name: {}", file_name);
             assert_eq!(manual_string, manual.to_string());
 
             // 输出内容以备查看
@@ -369,49 +365,79 @@ mod tests {
                 coord::RecordType::PgnRc,
                 coord::RecordType::PgnZh,
             ] {
-                let file_path = get_file_path(file_name, record_type);
-                if std::fs::File::open(&file_path).is_err() {
-                    let _ = manual.write(&file_path);
+                let mut path = PathBuf::from("tests/output");
+                path.push(file_name);
+                path.set_extension(record_type.ext_name());
+                // let path =Path::new(&format!("tests/output/{}.{}", file_name, record_type.ext_name()));
+                if std::fs::File::open(&path).is_err() {
+                    let _ = manual.write(&path);
                 }
 
-                let manual = Manual::from_filename(&file_path).unwrap();
-                assert_eq!(manual_string, manual.to_string(), "file_path: {file_path}");
+                let manual = Manual::from_path(&path).unwrap();
+                assert_eq!(manual_string, manual.to_string(), "file_path: {path:?}");
             }
         }
     }
 
     #[test]
-    #[ignore = "从文件提取manual后存入数据库。"]
-    fn test_manual_db() {
+    #[ignore = "从样板文件提取manual后存入数据库。"]
+    fn test_manual_from_file_to_db() {
         let conn = &mut models::get_conn();
+        let filename_manuals = common::get_filename_manuals();
+        let save_count = save_manuals_to_db(&filename_manuals, conn).unwrap();
 
-        let mut save_count = 0;
-        let mut filename_manuals = common::get_filename_manuals();
-        for (file_name, _, manual) in &mut filename_manuals {
-            manual.set_source_moves(&file_name);
-            if let Ok(count) = manual.info.borrow().save_db(conn) {
-                save_count += count;
-            }
-        }
+        println!("manual save: {}", save_count);
+    }
 
-        let mut cmp_count = 0;
-        let manuals = from_db(conn, "%01%");
+    #[test]
+    // #[ignore = "从目录下xqf文件提取manual后存入数据库。"]
+    fn test_manual_from_dir_to_db() {
+        use std::fs;
+        use std::io;
+        let mut entries = fs::read_dir(".")
+            .unwrap()
+            .map(|res| res.map(|e| e.path()))
+            .collect::<Result<Vec<_>, io::Error>>()
+            .unwrap();
+        // 不保证 `read_dir` 返回条目的顺序。
+        // 如果需要可重复的排序，则应对条目进行显式排序。
+        entries.sort();
+        // 现在，条目已经按照路径进行了排序。
+        // println!("{:?}", entries);
+
+        let conn = &mut models::get_conn();
+        let filename_manuals = vec![];
+        let save_count = save_manuals_to_db(&filename_manuals, conn).unwrap();
+
+        println!("manual save: {}", save_count);
+    }
+
+    #[test]
+    #[ignore = "从数据库提取符合条件的manual后检验。"]
+    fn test_manual_from_db_some() {
+        let conn = &mut models::get_conn();
+        let filename_manuals = common::get_filename_manuals();
+        let mut read_count = 0;
+        let manuals = read_manuals_from_db(conn, "%01%");
         if let Ok(mut manuals) = manuals {
-            cmp_count = manuals.len();
+            read_count = manuals.len();
             if let Some(manual) = manuals.get_mut(0) {
-                manual.cut_source_moves();
+                manual.info.cut_source_moves();
                 assert_eq!(filename_manuals[0].1, manual.to_string());
             }
         }
+        println!("manual read some: {}", read_count);
+    }
 
+    #[test]
+    #[ignore = "从数据库提取全部manual。"]
+    fn test_manual_from_db_all() {
+        let conn = &mut models::get_conn();
         let mut read_count = 0;
-        if let Ok(manuals) = from_db(conn, "%") {
+        if let Ok(manuals) = read_manuals_from_db(conn, "%") {
             read_count = manuals.len();
         }
 
-        println!(
-            "manual save_cmp_read: {:?}",
-            (save_count, cmp_count, read_count)
-        );
+        println!("manual read all: {}", read_count);
     }
 }

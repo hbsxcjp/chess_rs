@@ -1,8 +1,16 @@
 #![allow(dead_code)]
 
 use crate::board;
+use crate::coord;
+use crate::coord::CoordPair;
+use crate::manual;
 use std::error;
 use std::fmt;
+use std::fs::{self, DirEntry};
+use std::io;
+use std::path::{Path, PathBuf};
+// use std::convert::TryInto;
+// use crate::evaluation;
 
 pub type Result<T> = std::result::Result<T, ParseError>;
 
@@ -27,10 +35,43 @@ impl error::Error for ParseError {
     }
 }
 
-// use std::convert::TryInto;
-use crate::coord::CoordPair;
-// use crate::evaluation;
-use crate::manual;
+// 一种仅通过访问文件来遍历目录的可能实现方式
+pub fn visit_dirs(dir: &Path, cb: &dyn Fn(&DirEntry)) -> io::Result<()> {
+    if dir.is_dir() {
+        for entry in fs::read_dir(dir)? {
+            let entry = entry?;
+            let path = entry.path();
+            if path.is_dir() {
+                visit_dirs(&path, cb)?;
+            } else {
+                cb(&entry);
+            }
+        }
+    }
+
+    Ok(())
+}
+
+pub fn get_manuals_from_dir(dir: &Path) -> io::Result<Vec<manual::Manual>> {
+    let mut manuals = vec![];
+    if dir.is_dir() {
+        for entry in fs::read_dir(dir)? {
+            let entry = entry?;
+            let path = entry.path();
+            if path.is_dir() {
+                if let Ok(mut sub_manuals) = get_manuals_from_dir(&path) {
+                    manuals.append(&mut sub_manuals);
+                }
+            } else {
+                if let Ok(manual) = manual::Manual::from_path(path.as_path()) {
+                    manuals.push(manual);
+                }
+            }
+        }
+    }
+
+    Ok(manuals)
+}
 
 fn read_bytes(input: &mut &[u8], size: usize) -> Vec<u8> {
     let (bytes, rest) = input.split_at(size);
@@ -79,13 +120,19 @@ pub fn read_string(input: &mut &[u8]) -> String {
 pub fn get_filename_manuals() -> Vec<(&'static str, &'static str, manual::Manual)> {
     let mut filename_manuals = Vec::<(&str, &str, manual::Manual)>::new();
     for (file_name, manual_str) in FILE_NAME_MANUAL_STRINGS {
-        if let Ok(manual) = manual::Manual::from_filename(&format!("tests/xqf/{file_name}.xqf")) {
+        let mut path = PathBuf::from("tests/xqf");
+        path.push(file_name);
+        path.set_extension(coord::RecordType::Xqf.ext_name());
+        println!("path: {:?}", path);
+        //   let path = Path::new(&format!("tests/xqf/{file_name}.xqf"));
+        if let Ok(manual) = manual::Manual::from_path(&path) {
             filename_manuals.push((file_name, manual_str, manual));
         }
     }
 
     filename_manuals
 }
+
 pub const FEN_PIECES_CHARS:[(&str,&str,&str);4]=[
             (board::FEN,
             "rnbakabnr__________c_____c_p_p_p_p_p__________________P_P_P_P_P_C_____C__________RNBAKABNR",
