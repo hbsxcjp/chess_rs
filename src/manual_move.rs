@@ -60,7 +60,7 @@ impl ManualMove {
         keyxyt: usize,
         keyrmksize: usize,
         f32keys: &[u8],
-    ) -> Self {
+    ) -> common::Result<Self> {
         let __sub = |a, b| (a as isize - b as isize) as u8; // 保持为<256
 
         let read_bytes = |pos: &mut usize, size| {
@@ -126,7 +126,8 @@ impl ManualMove {
                 let fcolrow = __sub(data[0], (0x18 + keyxyf as usize) as u8);
                 let tcolrow = __sub(data[1], (0x20 + keyxyt as usize) as u8);
                 if fcolrow > 89 || tcolrow > 89 {
-                    assert!(false, "fcolrow > 89 || tcolrow > 89 ? ");
+                    // assert!(false, "fcolrow > 89 || tcolrow > 89 ? ");
+                    return Err(common::GenerateError::IndexOut);
                 }
 
                 let frow = (10 - 1 - fcolrow % 10) as usize;
@@ -138,7 +139,9 @@ impl ManualMove {
                 let has_next = (tag & 0x80) != 0;
                 let has_other = (tag & 0x40) != 0;
                 if before_move.coordpair == coord_pair {
-                    assert!(false, "Error.");
+                    // assert!(false, "before_move.coordpair == coord_pair? Error.");
+                    // return Err(common::GenerateError::IndexOut);
+                    continue;
                 }
 
                 if is_other {
@@ -160,12 +163,22 @@ impl ManualMove {
             }
         }
 
-        ManualMove::from(fen, root_move)
         // List<Move> allMoves = RootMove.AllAfterMoves;
         // allMoves.Insert(0, RootMove);
         // allMoves.ForEach(move
         //     => move.AfterMoves?.RemoveAll(move
         //         => !GetBoardWith(move.Before).BitBoard.CanMove(move.CoordPair)));
+        let board = board::Board::from(fen);
+        for amove in &root_move.get_all_after_moves() {
+            let (from_index, to_index) = amove.coordpair.from_to_index();
+            let is_valid = board
+                .to_move(amove, false)
+                .bit_board()
+                .is_valid(from_index, to_index);
+            assert!(is_valid, "({from_index}, {to_index}) is invalid!");
+        }
+        
+        Ok(ManualMove::from(fen, root_move))
     }
 
     pub fn from_bin(fen: &str, input: &mut &[u8]) -> Self {
@@ -198,7 +211,7 @@ impl ManualMove {
 
         common::write_string(&mut result, &self.root_move.remark());
         common::write_be_u32(&mut result, self.root_move.after_len() as u32);
-        for amove in self.get_all_after_moves() {
+        for amove in self.root_move.get_all_after_moves() {
             common::write_coordpair(&mut result, &amove.coordpair);
 
             common::write_string(&mut result, &amove.remark());
@@ -282,29 +295,9 @@ impl ManualMove {
         })
     }
 
-    fn get_all_after_moves(&self) -> Vec<Rc<amove::Move>> {
-        fn enqueue_after(move_deque: &mut VecDeque<Rc<amove::Move>>, amove: &Rc<amove::Move>) {
-            if let Some(after) = amove.after() {
-                for bmove in after {
-                    move_deque.push_back(bmove);
-                }
-            }
-        }
-
-        let mut all_after_moves = Vec::new();
-        let mut move_deque = VecDeque::new();
-        enqueue_after(&mut move_deque, &self.root_move);
-        while let Some(amove) = move_deque.pop_front() {
-            enqueue_after(&mut move_deque, &amove);
-            all_after_moves.push(amove);
-        }
-
-        all_after_moves
-    }
-
     pub fn get_zorbist(&self) -> evaluation::Zorbist {
         let mut zorbist = evaluation::Zorbist::new();
-        for amove in self.get_all_after_moves() {
+        for amove in self.root_move.get_all_after_moves() {
             let mut bit_board = self.board.to_move(&amove, false).bit_board();
             if let Some((key, aspect)) = bit_board.get_key_asp_amove(&amove) {
                 zorbist.insert(key, aspect);
@@ -341,7 +334,7 @@ impl ManualMove {
 
     pub fn to_string(&self, record_type: coord::RecordType) -> String {
         let mut reslut = self.root_move.to_string(record_type, &self.board);
-        for amove in self.get_all_after_moves() {
+        for amove in self.root_move.get_all_after_moves() {
             reslut.push_str(&amove.to_string(record_type, &self.board));
         }
 

@@ -226,7 +226,7 @@ impl Manual {
 
                 let manual_move = manual_move::ManualMove::from_xqf(
                     &fen, &input, version, keyxyf, keyxyt, keyrmksize, &f32keys,
-                );
+                )?;
 
                 Ok(Manual::from(info, manual_move))
             }
@@ -324,15 +324,10 @@ impl Manual {
 }
 
 pub fn save_manuals_to_db(
-    filename_manuals: Vec<(&str, &str, Manual)>,
+    manuals: &Vec<Manual>,
     conn: &mut SqliteConnection,
 ) -> Result<usize, diesel::result::Error> {
-    let mut infos = vec![];
-    for (file_name, _, mut manual) in filename_manuals {
-        manual.set_source_moves(file_name);
-        infos.push(manual.info.get_copy());
-    }
-
+    let infos = manuals.iter().map(|m| m.info.get_copy()).collect();
     ManualInfo::save_db(&infos, conn)
 }
 
@@ -365,6 +360,8 @@ pub fn read_manuals_from_dir(dir: &Path) -> io::Result<Vec<Manual>> {
                 if let Ok(mut manual) = Manual::from_path(&path) {
                     manual.set_source_moves(path.as_os_str().to_str().unwrap());
                     manuals.push(manual);
+                } else {
+                    println!("Cannot read: {:?}", &path);
                 }
             }
         }
@@ -384,7 +381,7 @@ mod tests {
             manual.to_string());
 
         let filename_manuals = common::get_filename_manuals();
-        for (file_name, manual_string, manual) in filename_manuals {
+        for (&(file_name, manual_string), manual) in filename_manuals {
             // println!("file_name: {}", file_name);
             assert_eq!(manual_string, manual.to_string());
 
@@ -414,8 +411,12 @@ mod tests {
     #[ignore = "从样板文件提取manual后存入数据库。"]
     fn test_manual_from_file_to_db() {
         let conn = &mut models::get_conn();
-        let filename_manuals = common::get_filename_manuals();
-        let save_count = save_manuals_to_db(filename_manuals, conn).unwrap();
+        let mut manuals = common::get_xqffile_manuals();
+        let _ = manuals
+            .iter_mut()
+            .zip(common::FILE_NAME_MANUAL_STRINGS.iter())
+            .map(|(manual, &(file_name, _))| manual.set_source_moves(file_name));
+        let save_count = save_manuals_to_db(&manuals, conn).unwrap();
 
         println!("manual save: {}", save_count);
     }
@@ -437,27 +438,24 @@ mod tests {
         // println!("{:?}", entries);
 
         let conn = &mut models::get_conn();
-        let filename_manuals = vec![];
-        let save_count = save_manuals_to_db(filename_manuals, conn).unwrap();
+        let manuals = read_manuals_from_dir(&Path::new("./tests/xqf")).unwrap();
+        let save_count = save_manuals_to_db(&manuals, conn).unwrap();
 
-        println!("manual save: {}", save_count);
+        println!("manuals_from_dir save: {}", save_count);
     }
 
     #[test]
     #[ignore = "从数据库提取符合条件的manual后检验。"]
     fn test_manual_from_db_some() {
         let conn = &mut models::get_conn();
-        let filename_manuals = common::get_filename_manuals();
-        let mut read_count = 0;
         let manuals = read_manuals_from_db(conn, "%01%");
         if let Ok(mut manuals) = manuals {
-            read_count = manuals.len();
             if let Some(manual) = manuals.get_mut(0) {
                 manual.info.cut_source_moves();
-                assert_eq!(filename_manuals[0].1, manual.to_string());
+                assert_eq!(common::FILE_NAME_MANUAL_STRINGS[0].1, manual.to_string());
             }
+            println!("manual read some: {}", manuals.len());
         }
-        println!("manual read some: {}", read_count);
     }
 
     #[test]

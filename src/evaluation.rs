@@ -48,6 +48,13 @@ pub struct FromToIndex {
     eval: Evaluation,
 }
 
+lazy_static! {
+    pub static ref ZORBIST: Zorbist = {
+        let conn = &mut crate::models::get_conn();
+        Zorbist::from_db(conn).unwrap()
+    };
+}
+
 impl Display for Evaluation {
     fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
         write!(f, "{}", self.count)
@@ -348,13 +355,6 @@ impl Zorbist {
     }
 }
 
-lazy_static! {
-    pub static ref ZORBIST: Zorbist = {
-        let conn = &mut crate::models::get_conn();
-        Zorbist::from_db(conn).unwrap()
-    };
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -363,11 +363,7 @@ mod tests {
     #[test]
     // #[ignore = "从文件提取zorbist后存入数据库"]
     fn test_eval_from_file() {
-        let filename_manuals = crate::common::get_filename_manuals();
-        let manuals = filename_manuals
-            .into_iter()
-            .map(|(_, _, manual)| manual)
-            .collect::<Vec<manual::Manual>>();
+        let manuals = crate::common::get_xqffile_manuals();
         let zorbist = Zorbist::from_manuals(&manuals);
         let result = format!("{}", zorbist);
         std::fs::write(format!("tests/output/zobrist_file.txt"), result).expect("Write Err.");

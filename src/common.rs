@@ -97,21 +97,28 @@ pub fn read_string(input: &mut &[u8]) -> String {
     String::from_utf8(bytes.try_into().unwrap()).unwrap()
 }
 
-pub fn get_filename_manuals() -> Vec<(&'static str, &'static str, manual::Manual)> {
-    let mut filename_manuals = Vec::<(&str, &str, manual::Manual)>::new();
-    for (file_name, manual_str) in FILE_NAME_MANUAL_STRINGS {
-        let full_file_name = format!(
+pub fn get_xqffile_manuals() -> Vec<manual::Manual> {
+    let mut result = Vec::new();
+    for (file_name, _) in FILE_NAME_MANUAL_STRINGS {
+        let path = PathBuf::from(format!(
             "tests/xqf/{}.{}",
             file_name,
             coord::RecordType::Xqf.ext_name()
-        );
-        let path = PathBuf::from(full_file_name);
-        // println!("path: {:?}", &path);
+        ));
         let manual = manual::Manual::from_path(&path).expect(&format!("{:?}", &path));
-        filename_manuals.push((file_name, manual_str, manual));
+        result.push(manual);
+
+        // println!("path: {:?}", &path);
     }
 
-    filename_manuals
+    result
+}
+
+pub fn get_filename_manuals() -> Vec<(&'static (&'static str, &'static str), manual::Manual)> {
+    FILE_NAME_MANUAL_STRINGS
+        .iter()
+        .zip(get_xqffile_manuals().into_iter())
+        .collect()
 }
 
 pub const FEN_PIECES_CHARS:[(&str,&str,&str);4]=[

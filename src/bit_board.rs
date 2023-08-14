@@ -202,11 +202,33 @@ impl BitBoard {
         self.operate_move(from_index, to_index, true, eat_kind)
     }
 
-    fn is_valid(&self, color: piece::Color, from_index: usize, to_index: usize) -> bool {
-        self.get_color(from_index).unwrap() == color && {
-            let to_color = self.get_color(to_index);
-            to_color.is_none() || to_color.unwrap() != color
+    pub fn is_valid(&mut self, from_index: usize, to_index: usize) -> bool {
+        let from_color = self.get_color(from_index);
+        if from_color.is_none() {
+            return false;
         }
+
+        let from_color = from_color.unwrap();
+        let to_color = self.get_color(to_index);
+        if to_color.is_some() && to_color.unwrap() == from_color {
+            return false;
+        }
+
+        let to_indexs = bit_constant::get_indexs_from_bitatom(self.get_move_from_index(from_index));
+        if !to_indexs.contains(&to_index) {
+            return false;
+        }
+
+        if let Some(eat_kind) = self.do_move(from_index, to_index) {
+            // 如是对方将帅的位置则直接可走，不用判断是否被将军（如加以判断，则会直接走棋吃将帅）；棋子已走，取终点位置颜色
+            if eat_kind != piece::Kind::King && self.is_killed(from_color) {
+                return false;
+            }
+        } else {
+            return false;
+        }
+
+        true
     }
 
     fn operate_move(
@@ -356,7 +378,7 @@ impl BitBoard {
         }
 
         result
-    }   
+    }
 
     pub fn to_string(&mut self) -> String {
         let mut result = format!("bottom_color: {:?}\nkinds_to_chs:\n", self.bottom_color);

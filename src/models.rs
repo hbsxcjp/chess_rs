@@ -85,20 +85,22 @@ pub struct ManualInfo {
     pub movestring: Option<String>,
 }
 
-pub fn get_pool() -> SqlitePool {
-    use diesel::prelude::*;
-    dotenv().ok();
+lazy_static! {
+    pub static ref SQLITEPOOL: SqlitePool = {
+        use diesel::prelude::*;
+        dotenv().ok();
 
-    let database_url = env::var("DATABASE_URL").expect("DATABASE_URL must be set");
-    // SqliteConnection::establish(&database_url)
-    // .unwrap_or_else(|_| panic!("Error connecting to {}", database_url))
+        let database_url = env::var("DATABASE_URL").expect("DATABASE_URL must be set");
+        // SqliteConnection::establish(&database_url)
+        // .unwrap_or_else(|_| panic!("Error connecting to {}", database_url))
 
-    let manager = ConnectionManager::<SqliteConnection>::new(database_url);
-    Pool::builder().build(manager).unwrap()
+        let manager = ConnectionManager::<SqliteConnection>::new(database_url);
+        Pool::builder().build(manager).unwrap()
+    };
 }
 
 pub fn get_conn() -> SqlitePooledConnection {
-    let mut conn = get_pool().get().unwrap();
+    let mut conn = SQLITEPOOL.get().unwrap();
     conn.batch_execute("PRAGMA foreign_keys = ON; PRAGMA synchronous = OFF;")
         .expect("Set foreign_keys faild.");
 

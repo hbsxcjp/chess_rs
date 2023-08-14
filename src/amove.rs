@@ -3,6 +3,7 @@
 use crate::board;
 use crate::coord;
 use std::cell::RefCell;
+use std::collections::VecDeque;
 use std::rc::Rc;
 use std::rc::Weak;
 // use serde_derive::Deserialize;
@@ -112,6 +113,26 @@ impl Move {
         // before_moves.reverse();
 
         before_moves
+    }
+
+    pub fn get_all_after_moves(self: &Rc<Self>) -> Vec<Rc<Self>> {
+        fn enqueue_after(move_deque: &mut VecDeque<Rc<Move>>, amove: &Rc<Move>) {
+            if let Some(after) = amove.after() {
+                for bmove in after {
+                    move_deque.push_back(bmove);
+                }
+            }
+        }
+
+        let mut all_after_moves = Vec::new();
+        let mut move_deque = VecDeque::new();
+        enqueue_after(&mut move_deque, self);
+        while let Some(amove) = move_deque.pop_front() {
+            enqueue_after(&mut move_deque, &amove);
+            all_after_moves.push(amove);
+        }
+
+        all_after_moves
     }
 
     pub fn to_string(
