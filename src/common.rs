@@ -12,24 +12,25 @@ use std::path::{Path, PathBuf};
 // use std::convert::TryInto;
 // use crate::evaluation;
 
-pub type Result<T> = std::result::Result<T, ParseError>;
+pub type Result<T> = std::result::Result<T, GenerateError>;
 
 #[derive(Clone, Debug)]
-pub enum ParseError {
+pub enum GenerateError {
     RowOut,
     ColOut,
     IndexOut,
     StringParse,
     RecordTypeError,
+    ReadFileError,
 }
 
-impl fmt::Display for ParseError {
+impl fmt::Display for GenerateError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "invalid value(kind: {:?}) to coord.", self)
     }
 }
 
-impl error::Error for ParseError {
+impl error::Error for GenerateError {
     fn source(&self) -> Option<&(dyn error::Error + 'static)> {
         None
     }
@@ -50,27 +51,6 @@ pub fn visit_dirs(dir: &Path, cb: &dyn Fn(&DirEntry)) -> io::Result<()> {
     }
 
     Ok(())
-}
-
-pub fn get_manuals_from_dir(dir: &Path) -> io::Result<Vec<manual::Manual>> {
-    let mut manuals = vec![];
-    if dir.is_dir() {
-        for entry in fs::read_dir(dir)? {
-            let entry = entry?;
-            let path = entry.path();
-            if path.is_dir() {
-                if let Ok(mut sub_manuals) = get_manuals_from_dir(&path) {
-                    manuals.append(&mut sub_manuals);
-                }
-            } else {
-                if let Ok(manual) = manual::Manual::from_path(path.as_path()) {
-                    manuals.push(manual);
-                }
-            }
-        }
-    }
-
-    Ok(manuals)
 }
 
 fn read_bytes(input: &mut &[u8], size: usize) -> Vec<u8> {
@@ -120,14 +100,15 @@ pub fn read_string(input: &mut &[u8]) -> String {
 pub fn get_filename_manuals() -> Vec<(&'static str, &'static str, manual::Manual)> {
     let mut filename_manuals = Vec::<(&str, &str, manual::Manual)>::new();
     for (file_name, manual_str) in FILE_NAME_MANUAL_STRINGS {
-        let mut path = PathBuf::from("tests/xqf");
-        path.push(file_name);
-        path.set_extension(coord::RecordType::Xqf.ext_name());
-        println!("path: {:?}", path);
-        //   let path = Path::new(&format!("tests/xqf/{file_name}.xqf"));
-        if let Ok(manual) = manual::Manual::from_path(&path) {
-            filename_manuals.push((file_name, manual_str, manual));
-        }
+        let full_file_name = format!(
+            "tests/xqf/{}.{}",
+            file_name,
+            coord::RecordType::Xqf.ext_name()
+        );
+        let path = PathBuf::from(full_file_name);
+        // println!("path: {:?}", &path);
+        let manual = manual::Manual::from_path(&path).expect(&format!("{:?}", &path));
+        filename_manuals.push((file_name, manual_str, manual));
     }
 
     filename_manuals

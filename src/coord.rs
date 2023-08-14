@@ -71,9 +71,9 @@ impl Coord {
 
     pub fn from(row: usize, col: usize) -> common::Result<Self> {
         if row >= ROWCOUNT {
-            Err(common::ParseError::RowOut)
+            Err(common::GenerateError::RowOut)
         } else if col >= COLCOUNT {
-            Err(common::ParseError::ColOut)
+            Err(common::GenerateError::ColOut)
         } else {
             Ok(Coord { row, col })
         }
@@ -88,20 +88,20 @@ impl Coord {
             RecordType::PgnRc => {
                 let row_col = coord_str
                     .parse::<usize>()
-                    .map_err(|_| common::ParseError::StringParse)?;
+                    .map_err(|_| common::GenerateError::StringParse)?;
 
                 Self::from(row_col / 10, row_col % 10)
             }
             RecordType::PgnIccs => {
                 let row = coord_str
                     .get(1..2)
-                    .ok_or(common::ParseError::StringParse)?
+                    .ok_or(common::GenerateError::StringParse)?
                     .parse()
-                    .map_err(|_| common::ParseError::StringParse)?;
+                    .map_err(|_| common::GenerateError::StringParse)?;
                 let col_ch = coord_str
                     .chars()
                     .next()
-                    .ok_or(common::ParseError::StringParse)?;
+                    .ok_or(common::GenerateError::StringParse)?;
                 let col = col_ch as usize - 'A' as usize;
 
                 Self::from(row, col)
@@ -109,18 +109,18 @@ impl Coord {
             RecordType::Txt => {
                 let row = coord_str
                     .get(1..2)
-                    .ok_or(common::ParseError::StringParse)?
+                    .ok_or(common::GenerateError::StringParse)?
                     .parse()
-                    .map_err(|_| common::ParseError::StringParse)?;
+                    .map_err(|_| common::GenerateError::StringParse)?;
                 let col = coord_str
                     .get(3..4)
-                    .ok_or(common::ParseError::StringParse)?
+                    .ok_or(common::GenerateError::StringParse)?
                     .parse()
-                    .map_err(|_| common::ParseError::StringParse)?;
+                    .map_err(|_| common::GenerateError::StringParse)?;
 
                 Self::from(row, col)
             }
-            _ => Err(common::ParseError::StringParse),
+            _ => Err(common::GenerateError::StringParse),
         }
     }
 

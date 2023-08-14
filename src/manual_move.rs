@@ -244,7 +244,8 @@ impl ManualMove {
                             move_after_num_deque.pop_front().unwrap();
                         let the_board = board.to_move(&before_move, true);
                         for _ in 0..before_after_num {
-                            let caps = caps_iter.next().ok_or(common::ParseError::StringParse)?;
+                            let caps =
+                                caps_iter.next().ok_or(common::GenerateError::StringParse)?;
                             let coordpair_str = caps.at(1).unwrap();
                             let coordpair = match record_type {
                                 coord::RecordType::PgnZh => {

@@ -10,6 +10,8 @@ use diesel::sqlite::SqliteConnection;
 use encoding::all::GBK;
 use encoding::{DecoderTrap, Encoding};
 use std::borrow::{Borrow, BorrowMut};
+use std::fs::{self, DirEntry};
+use std::io;
 use std::path::{Path, PathBuf};
 // use std::cell::RefCell;
 // use diesel::prelude::*;
@@ -44,7 +46,7 @@ impl Manual {
                 _ => Self::from_string(path, record_type),
             }
         } else {
-            Err(common::ParseError::StringParse)
+            Err(common::GenerateError::StringParse)
         }
     }
 
@@ -55,7 +57,7 @@ impl Manual {
         } else if let Some(rowcols_str) = info.rowcols.as_ref() {
             manual_move::ManualMove::from_rowcols(fen, rowcols_str)?
         } else {
-            return Err(common::ParseError::StringParse);
+            return Err(common::GenerateError::StringParse);
         };
 
         Ok(Manual::from(info, manual_move))
@@ -77,179 +79,183 @@ impl Manual {
     }
 
     fn from_xqf(path: &Path) -> common::Result<Self> {
-        let mut info = models::ManualInfo::new();
-        let mut manual_move = manual_move::ManualMove::new();
-        if let Ok(input) = std::fs::read(path) {
-            //文件标记'XQ'=$5158/版本/加密掩码/ProductId[4], 产品(厂商的产品号)
-            // 棋谱评论员/文件的作者
-            // 32个棋子的原始位置
-            // 加密的钥匙和/棋子布局位置钥匙/棋谱起点钥匙/棋谱终点钥匙
-            // 用单字节坐标表示, 将字节变为十进制, 十位数为X(0-8)个位数为Y(0-9),
-            // 棋盘的左下角为原点(0, 0). 32个棋子的位置从1到32依次为:
-            // 红: 车马相士帅士相马车炮炮兵兵兵兵兵 (位置从右到左, 从下到上)
-            // 黑: 车马象士将士象马车炮炮卒卒卒卒卒 (位置从右到左,
-            // 该谁下 0-红先, 1-黑先/最终结果 0-未知, 1-红胜 2-黑胜, 3-和棋
-            // 从下到上)PlayStepNo[2],
-            // 对局类型(开,中,残等)
-            const PIECENUM: usize = 32;
-            let signature = &input[0..2];
-            // let productid = &byte_vec[4..8];
-            let headqizixy = &input[16..48];
-            // let playstepno = &byte_vec[48..50];
-            // let playnodes = &byte_vec[52..56];
-            // let ptreepos = &byte_vec[56..60];
-            // let reserved1 = &byte_vec[60..64];
-            let headcodea_h = &input[64..80];
-            let titlea = &input[80..144];
-            // let titleb = &byte_vec[144..208];
-            let event = &input[208..272];
-            let date = &input[272..288];
-            let site = &input[288..304];
-            let red = &input[304..320];
-            let black = &input[320..336];
-            let opening = &input[336..400];
-            // let redtime = &byte_vec[400..416];
-            // let blktime = &byte_vec[416..432];
-            // let reservedh = &byte_vec[432..464];
-            let rmkwriter = &input[464..480];
-            let author = &input[480..496]; //, Other[528]{};
-            let version = input[2];
-            let headkeymask = input[3];
-            let headkeyora = input[8];
-            let headkeyorb = input[9];
-            let headkeyorc = input[10];
-            let headkeyord = input[11];
-            let headkeyssum = input[12] as usize;
-            let headkeyxy = input[13] as usize;
-            let headkeyxyf = input[14] as usize;
-            let headkeyxyt = input[15] as usize;
-            // let headwhoplay = byte_vec[50];
-            let headplayresult = input[51] as usize;
+        match std::fs::read(path) {
+            Ok(input) => {
+                let mut info = models::ManualInfo::new();
+                //文件标记'XQ'=$5158/版本/加密掩码/ProductId[4], 产品(厂商的产品号)
+                // 棋谱评论员/文件的作者
+                // 32个棋子的原始位置
+                // 加密的钥匙和/棋子布局位置钥匙/棋谱起点钥匙/棋谱终点钥匙
+                // 用单字节坐标表示, 将字节变为十进制, 十位数为X(0-8)个位数为Y(0-9),
+                // 棋盘的左下角为原点(0, 0). 32个棋子的位置从1到32依次为:
+                // 红: 车马相士帅士相马车炮炮兵兵兵兵兵 (位置从右到左, 从下到上)
+                // 黑: 车马象士将士象马车炮炮卒卒卒卒卒 (位置从右到左,
+                // 该谁下 0-红先, 1-黑先/最终结果 0-未知, 1-红胜 2-黑胜, 3-和棋
+                // 从下到上)PlayStepNo[2],
+                // 对局类型(开,中,残等)
+                const PIECENUM: usize = 32;
+                let signature = &input[0..2];
+                // let productid = &byte_vec[4..8];
+                let headqizixy = &input[16..48];
+                // let playstepno = &byte_vec[48..50];
+                // let playnodes = &byte_vec[52..56];
+                // let ptreepos = &byte_vec[56..60];
+                // let reserved1 = &byte_vec[60..64];
+                let headcodea_h = &input[64..80];
+                let titlea = &input[80..144];
+                // let titleb = &byte_vec[144..208];
+                let event = &input[208..272];
+                let date = &input[272..288];
+                let site = &input[288..304];
+                let red = &input[304..320];
+                let black = &input[320..336];
+                let opening = &input[336..400];
+                // let redtime = &byte_vec[400..416];
+                // let blktime = &byte_vec[416..432];
+                // let reservedh = &byte_vec[432..464];
+                let rmkwriter = &input[464..480];
+                let author = &input[480..496]; //, Other[528]{};
+                let version = input[2];
+                let headkeymask = input[3];
+                let headkeyora = input[8];
+                let headkeyorb = input[9];
+                let headkeyorc = input[10];
+                let headkeyord = input[11];
+                let headkeyssum = input[12] as usize;
+                let headkeyxy = input[13] as usize;
+                let headkeyxyf = input[14] as usize;
+                let headkeyxyt = input[15] as usize;
+                // let headwhoplay = byte_vec[50];
+                let headplayresult = input[51] as usize;
 
-            if signature[0] != 0x58 || signature[1] != 0x51 {
-                assert!(false, "文件标记不符。");
-            }
-            if (headkeyssum + headkeyxy + headkeyxyf + headkeyxyt) % 256 != 0 {
-                assert!(false, "检查密码校验和不对，不等于0。");
-            }
-            if version > 18 {
-                assert!(
-                    false,
-                    "这是一个高版本的XQF文件，您需要更高版本的XQStudio来读取这个文件。"
-                );
-            }
+                if signature[0] != 0x58 || signature[1] != 0x51 {
+                    assert!(false, "文件标记不符。");
+                }
+                if (headkeyssum + headkeyxy + headkeyxyf + headkeyxyt) % 256 != 0 {
+                    assert!(false, "检查密码校验和不对，不等于0。");
+                }
+                if version > 18 {
+                    assert!(
+                        false,
+                        "这是一个高版本的XQF文件，您需要更高版本的XQStudio来读取这个文件。"
+                    );
+                }
 
-            let keyxyf: usize;
-            let keyxyt: usize;
-            let keyrmksize: usize;
-            let mut f32keys = [0; PIECENUM];
+                let keyxyf: usize;
+                let keyxyt: usize;
+                let keyrmksize: usize;
+                let mut f32keys = [0; PIECENUM];
 
-            let mut head_qizixy = headqizixy.to_vec();
-            // version <= 10 兼容1.0以前的版本
-            if version <= 10 {
-                keyrmksize = 0;
-                keyxyf = 0;
-                keyxyt = 0;
-            } else {
-                let keyxy;
-                let calkey = |bkey, ckey| {
-                    // % 256; // 保持为<256
-                    ((((((bkey * bkey) * 3 + 9) * 3 + 8) * 2 + 1) * 3 + 8) * ckey) as u8 as usize
-                };
+                let mut head_qizixy = headqizixy.to_vec();
+                // version <= 10 兼容1.0以前的版本
+                if version <= 10 {
+                    keyrmksize = 0;
+                    keyxyf = 0;
+                    keyxyt = 0;
+                } else {
+                    let keyxy;
+                    let calkey = |bkey, ckey| {
+                        // % 256; // 保持为<256
+                        ((((((bkey * bkey) * 3 + 9) * 3 + 8) * 2 + 1) * 3 + 8) * ckey) as u8
+                            as usize
+                    };
 
-                keyxy = calkey(headkeyxy, headkeyxy);
-                keyxyf = calkey(headkeyxyf, keyxy);
-                keyxyt = calkey(headkeyxyt, keyxyf);
-                // % 65536
-                keyrmksize = ((headkeyssum * 256 + headkeyxy) % 32000) + 767;
-                // 棋子位置循环移动
-                if version >= 12 {
-                    for (index, qizixy) in headqizixy.iter().enumerate() {
-                        head_qizixy[(index + keyxy + 1) % PIECENUM] = *qizixy;
+                    keyxy = calkey(headkeyxy, headkeyxy);
+                    keyxyf = calkey(headkeyxyf, keyxy);
+                    keyxyt = calkey(headkeyxyt, keyxyf);
+                    // % 65536
+                    keyrmksize = ((headkeyssum * 256 + headkeyxy) % 32000) + 767;
+                    // 棋子位置循环移动
+                    if version >= 12 {
+                        for (index, qizixy) in headqizixy.iter().enumerate() {
+                            head_qizixy[(index + keyxy + 1) % PIECENUM] = *qizixy;
+                        }
+                    }
+                    for qizixy in &mut head_qizixy {
+                        // 保持为8位无符号整数，<256
+                        *qizixy = (*qizixy as isize - keyxy as isize) as u8;
                     }
                 }
-                for qizixy in &mut head_qizixy {
-                    // 保持为8位无符号整数，<256
-                    *qizixy = (*qizixy as isize - keyxy as isize) as u8;
+
+                let keybytes = [
+                    (headkeyssum as u8 & headkeymask) | headkeyora,
+                    (headkeyxy as u8 & headkeymask) | headkeyorb,
+                    (headkeyxyf as u8 & headkeymask) | headkeyorc,
+                    (headkeyxyt as u8 & headkeymask) | headkeyord,
+                ];
+                for (index, ch) in "[(C) Copyright Mr. Dong Shiwei.]".bytes().enumerate() {
+                    f32keys[index] = ch & keybytes[index % 4];
+                } // ord(c)
+
+                // 取得棋子字符串
+                let mut piece_chars = vec![b'_'; SEATCOUNT];
+                // QiziXY设定的棋子顺序
+                for (index, ch) in "RNBAKABNRCCPPPPPrnbakabnrccppppp".bytes().enumerate() {
+                    let xy = head_qizixy[index] as usize;
+                    if xy < SEATCOUNT {
+                        // 用单字节坐标表示, 将字节变为十进制,
+                        // 十位数为X(0-8),个位数为Y(0-9),棋盘的左下角为原点(0, 0)
+                        piece_chars[(ROWCOUNT - 1 - xy % ROWCOUNT) * COLCOUNT + xy / ROWCOUNT] = ch;
+                    }
                 }
+
+                let fen = board::piece_chars_to_fen(&String::from_utf8(piece_chars).unwrap());
+                let result = ["未知", "红胜", "黑胜", "和棋"];
+                let typestr = ["全局", "开局", "中局", "残局"];
+                let bytes_to_string = |bytes| {
+                    GBK.decode(bytes, DecoderTrap::Ignore)
+                        .unwrap()
+                        .replace('\0', "")
+                        .trim()
+                        .into()
+                };
+
+                info.fen = Some(format!("{fen} r - - 0 1")); // 可能存在不是红棋先走的情况？
+                info.version = Some(version.to_string());
+                info.win = Some(String::from(result[headplayresult as usize]));
+                info.atype = Some(String::from(typestr[headcodea_h[0] as usize]));
+                info.title = bytes_to_string(titlea);
+                info.game = bytes_to_string(event);
+                info.date = Some(bytes_to_string(date));
+                info.site = Some(bytes_to_string(site));
+                info.red = Some(bytes_to_string(red));
+                info.black = Some(bytes_to_string(black));
+                info.opening = Some(bytes_to_string(opening));
+                info.writer = Some(bytes_to_string(rmkwriter));
+                info.author = Some(bytes_to_string(author));
+
+                let manual_move = manual_move::ManualMove::from_xqf(
+                    &fen, &input, version, keyxyf, keyxyt, keyrmksize, &f32keys,
+                );
+
+                Ok(Manual::from(info, manual_move))
             }
-
-            let keybytes = [
-                (headkeyssum as u8 & headkeymask) | headkeyora,
-                (headkeyxy as u8 & headkeymask) | headkeyorb,
-                (headkeyxyf as u8 & headkeymask) | headkeyorc,
-                (headkeyxyt as u8 & headkeymask) | headkeyord,
-            ];
-            for (index, ch) in "[(C) Copyright Mr. Dong Shiwei.]".bytes().enumerate() {
-                f32keys[index] = ch & keybytes[index % 4];
-            } // ord(c)
-
-            // 取得棋子字符串
-            let mut piece_chars = vec![b'_'; SEATCOUNT];
-            // QiziXY设定的棋子顺序
-            for (index, ch) in "RNBAKABNRCCPPPPPrnbakabnrccppppp".bytes().enumerate() {
-                let xy = head_qizixy[index] as usize;
-                if xy < SEATCOUNT {
-                    // 用单字节坐标表示, 将字节变为十进制,
-                    // 十位数为X(0-8),个位数为Y(0-9),棋盘的左下角为原点(0, 0)
-                    piece_chars[(ROWCOUNT - 1 - xy % ROWCOUNT) * COLCOUNT + xy / ROWCOUNT] = ch;
-                }
-            }
-
-            let fen = board::piece_chars_to_fen(&String::from_utf8(piece_chars).unwrap());
-            let result = ["未知", "红胜", "黑胜", "和棋"];
-            let typestr = ["全局", "开局", "中局", "残局"];
-            let bytes_to_string = |bytes| {
-                GBK.decode(bytes, DecoderTrap::Ignore)
-                    .unwrap()
-                    .replace('\0', "")
-                    .trim()
-                    .into()
-            };
-
-            info.fen = Some(format!("{fen} r - - 0 1")); // 可能存在不是红棋先走的情况？
-            info.version = Some(version.to_string());
-            info.win = Some(String::from(result[headplayresult as usize]));
-            info.atype = Some(String::from(typestr[headcodea_h[0] as usize]));
-            info.title = bytes_to_string(titlea);
-            info.game = bytes_to_string(event);
-            info.date = Some(bytes_to_string(date));
-            info.site = Some(bytes_to_string(site));
-            info.red = Some(bytes_to_string(red));
-            info.black = Some(bytes_to_string(black));
-            info.opening = Some(bytes_to_string(opening));
-            info.writer = Some(bytes_to_string(rmkwriter));
-            info.author = Some(bytes_to_string(author));
-
-            manual_move = manual_move::ManualMove::from_xqf(
-                &fen, &input, version, keyxyf, keyxyt, keyrmksize, &f32keys,
-            );
+            Err(_) => Err(common::GenerateError::ReadFileError),
         }
-
-        Ok(Manual::from(info, manual_move))
     }
 
     fn from_bin(path: &Path) -> common::Result<Self> {
-        if let Ok(input) = std::fs::read(path) {
-            let mut input = input.borrow();
-            let mut key_values = vec![];
-            let info_len = common::read_be_u32(&mut input);
-            for _ in 0..info_len {
-                let key = common::read_string(&mut input);
-                let value = common::read_string(&mut input);
+        match std::fs::read(path) {
+            Ok(input) => {
+                let mut input = input.borrow();
+                let mut key_values = vec![];
+                let info_len = common::read_be_u32(&mut input);
+                for _ in 0..info_len {
+                    let key = common::read_string(&mut input);
+                    let value = common::read_string(&mut input);
 
-                key_values.push((key, value));
-                // println!("key_value: {key} = {value}");
-                // info_old.insert(key, value);
+                    key_values.push((key, value));
+                    // println!("key_value: {key} = {value}");
+                    // info_old.insert(key, value);
+                }
+
+                // let fen = get_fen_old(&info_old);
+                let info = models::ManualInfo::from(key_values);
+                let fen = info.get_fen();
+                let manual_move = manual_move::ManualMove::from_bin(fen, &mut input);
+                Ok(Manual::from(info, manual_move))
             }
-
-            // let fen = get_fen_old(&info_old);
-            let info = models::ManualInfo::from(key_values);
-            let fen = info.get_fen();
-            let manual_move = manual_move::ManualMove::from_bin(fen, &mut input);
-            Ok(Manual::from(info, manual_move))
-        } else {
-            Err(common::ParseError::StringParse)
+            Err(_) => Err(common::GenerateError::ReadFileError),
         }
     }
 
@@ -272,10 +278,10 @@ impl Manual {
 
     fn from_string(path: &Path, record_type: coord::RecordType) -> common::Result<Self> {
         let manual_string =
-            std::fs::read_to_string(&path).map_err(|_| common::ParseError::StringParse)?;
+            std::fs::read_to_string(&path).map_err(|_| common::GenerateError::StringParse)?;
         let (info_str, manual_move_str) = manual_string
             .split_once("\n\n")
-            .ok_or(common::ParseError::StringParse)?;
+            .ok_or(common::GenerateError::StringParse)?;
 
         let mut key_values = vec![];
         let info_re = regex::Regex::new(r"\[(\S+): ([\s\S]*?)\]").unwrap();
@@ -295,6 +301,14 @@ impl Manual {
         Ok(Manual::from(info, manual_move))
     }
 
+    pub fn set_source_moves(&mut self, file_name: &str) {
+        self.info.set_source_moves(
+            file_name,
+            &self.manual_move.get_rowcols(),
+            &self.manual_move.to_string(coord::RecordType::Txt),
+        );
+    }
+
     fn to_string_type(&self, record_type: coord::RecordType) -> String {
         let mut info_str = String::new();
         for (key, value) in self.info.borrow().get_key_values() {
@@ -310,18 +324,13 @@ impl Manual {
 }
 
 pub fn save_manuals_to_db(
-    filename_manuals: &Vec<(&str, &str, Manual)>,
+    filename_manuals: Vec<(&str, &str, Manual)>,
     conn: &mut SqliteConnection,
 ) -> Result<usize, diesel::result::Error> {
     let mut infos = vec![];
-    for (file_name, _, manual) in filename_manuals {
-        let mut info = manual.info.get_copy();
-        info.set_source_moves(
-            file_name,
-            &manual.manual_move.get_rowcols(),
-            &manual.manual_move.to_string(coord::RecordType::Txt),
-        );
-        infos.push(info);
+    for (file_name, _, mut manual) in filename_manuals {
+        manual.set_source_moves(file_name);
+        infos.push(manual.info.get_copy());
     }
 
     ManualInfo::save_db(&infos, conn)
@@ -342,6 +351,28 @@ pub fn read_manuals_from_db(
     Ok(result)
 }
 
+pub fn read_manuals_from_dir(dir: &Path) -> io::Result<Vec<Manual>> {
+    let mut manuals = vec![];
+    if dir.is_dir() {
+        for entry in fs::read_dir(dir)? {
+            let entry = entry?;
+            let path = entry.path();
+            if path.is_dir() {
+                if let Ok(mut sub_manuals) = read_manuals_from_dir(&path) {
+                    manuals.append(&mut sub_manuals);
+                }
+            } else {
+                if let Ok(mut manual) = Manual::from_path(&path) {
+                    manual.set_source_moves(path.as_os_str().to_str().unwrap());
+                    manuals.push(manual);
+                }
+            }
+        }
+    }
+
+    Ok(manuals)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -354,7 +385,7 @@ mod tests {
 
         let filename_manuals = common::get_filename_manuals();
         for (file_name, manual_string, manual) in filename_manuals {
-            println!("file_name: {}", file_name);
+            // println!("file_name: {}", file_name);
             assert_eq!(manual_string, manual.to_string());
 
             // 输出内容以备查看
@@ -365,10 +396,10 @@ mod tests {
                 coord::RecordType::PgnRc,
                 coord::RecordType::PgnZh,
             ] {
-                let mut path = PathBuf::from("tests/output");
-                path.push(file_name);
-                path.set_extension(record_type.ext_name());
-                // let path =Path::new(&format!("tests/output/{}.{}", file_name, record_type.ext_name()));
+                let full_file_name =
+                    format!("tests/output/{}.{}", file_name, record_type.ext_name());
+                let path = PathBuf::from(full_file_name);
+                // println!("path: {:?}", &path);
                 if std::fs::File::open(&path).is_err() {
                     let _ = manual.write(&path);
                 }
@@ -384,7 +415,7 @@ mod tests {
     fn test_manual_from_file_to_db() {
         let conn = &mut models::get_conn();
         let filename_manuals = common::get_filename_manuals();
-        let save_count = save_manuals_to_db(&filename_manuals, conn).unwrap();
+        let save_count = save_manuals_to_db(filename_manuals, conn).unwrap();
 
         println!("manual save: {}", save_count);
     }
@@ -392,22 +423,22 @@ mod tests {
     #[test]
     // #[ignore = "从目录下xqf文件提取manual后存入数据库。"]
     fn test_manual_from_dir_to_db() {
-        use std::fs;
-        use std::io;
-        let mut entries = fs::read_dir(".")
-            .unwrap()
-            .map(|res| res.map(|e| e.path()))
-            .collect::<Result<Vec<_>, io::Error>>()
-            .unwrap();
+        // use std::fs;
+        // use std::io;
+        // let mut entries = fs::read_dir(".")
+        //     .unwrap()
+        //     .map(|res| res.map(|e| e.path()))
+        //     .collect::<Result<Vec<_>, io::Error>>()
+        //     .unwrap();
         // 不保证 `read_dir` 返回条目的顺序。
         // 如果需要可重复的排序，则应对条目进行显式排序。
-        entries.sort();
+        // entries.sort();
         // 现在，条目已经按照路径进行了排序。
         // println!("{:?}", entries);
 
         let conn = &mut models::get_conn();
         let filename_manuals = vec![];
-        let save_count = save_manuals_to_db(&filename_manuals, conn).unwrap();
+        let save_count = save_manuals_to_db(filename_manuals, conn).unwrap();
 
         println!("manual save: {}", save_count);
     }
